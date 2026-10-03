@@ -1,7 +1,11 @@
----
-Language: C
-AlignAfterOpenBracket: true
-ColumnLimit:     110
-IndentWidth:     4
-...
+# default sttyle - specific settings can be overridden
+BasedOnStyle: LLVM
 
+# use tabs for indentation
+UseTab: ForIndentation
+# 1 indent = 4 spaces.
+IndentWidth: 4
+# TAB = 4 spaces.
+TabWidth: 4
+# Max line length, 0 means no limit.
+ColumnLimit: 110

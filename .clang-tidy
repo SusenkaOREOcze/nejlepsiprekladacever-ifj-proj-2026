@@ -1,0 +1,37 @@
+---
+Checks: >
+  -*,
+  clang-analyzer-*,
+  readability-identifier-naming
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*'
+FormatStyle: file
+
+CheckOptions:
+  # Variables: snake_case
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+
+  # Functions: snake_case
+  readability-identifier-naming.FunctionCase: lower_case
+
+  # Struct tags: PascalCase
+  readability-identifier-naming.StructCase: CamelCase
+
+  # Typedef/type aliases: snake_case_t
+  readability-identifier-naming.TypedefCase: lower_case
+  readability-identifier-naming.TypedefSuffix: '_t'
+
+  # Enums: PascalCase
+  readability-identifier-naming.EnumCase: CamelCase
+
+  # Enum members: UPPER_SNAKE_CASE
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE
+
+  # Macros: UPPER_SNAKE_CASE
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
+
+  # Constants: UPPER_SNAKE_CASE
+  readability-identifier-naming.ConstantCase: UPPER_CASE
+...

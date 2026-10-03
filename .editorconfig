@@ -1,6 +1,16 @@
-; indicate this is the root of the project
 root = true
 
 [*]
-indent_style = tab
+
+charset = utf-8
+# At the end of line, use LF
 end_of_line = lf
+# At the end of file, insert a newline character.
+insert_final_newline = true
+# no tab nor space at the end of line
+trim_trailing_whitespace = true
+indent_style = tab
+# 1 indent = 4 spaces.
+indent_size = 4
+# TAB = 4 spaces
+tab_width = 4
