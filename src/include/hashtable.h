@@ -5,7 +5,7 @@
 
    @date 2026-09-28
 
-   @brief The public header file for the hashtable.c module, defining the hash table data type.
+   @brief The public header file for the hashtable.c module; the file a user of this structure must include.
 
    @details This file contains declarations required for the usage of the hashtable.c module and the data
    structure it defines. It is an abstract data type; the implementation is deliberately hidden from the user
@@ -18,6 +18,7 @@
 /*=====
   TYPES
   =====*/
+
 /**
    Define a new hashtable which should hold data of type 'datatype'.
 
@@ -34,11 +35,22 @@
  */
 typedef const char* htbl_key_t;
 
+/**
+   A set of codes that are returned by most of the hash table functions (see their respective returns).
+*/
+typedef enum HashtableStatusCode {
+    HTBLSTAT_OK = 0,
+    HTBLSTAT_BAD_ARG,
+    HTBLSTAT_BAD_ALLOC,
+    HTBLSTAT_INVALID_KEY,
+} htbl_stat_t;
+
 
 
 /*=========
   FUNCTIONS
   =========*/
+
 /**
    Initialize a hash table to some non-zero initial size.
 
@@ -112,8 +124,7 @@ typedef const char* htbl_key_t;
 
    @param var_name The name of the variable into which to insert data. _Must be a modifiable l-value_.
 
-   @returns HTBLSTAT_OK if the key exists and has been retrieved, or HTBLSTAT_INVALID_KEY if the key wasn't
-   found.
+   @returns Non-zero if the key was found (and its value was retrieved), or zero if the key doesn't exist.
  */
 #define htbl_retrieve(hash_table, key, var_name) _htbl_retrieve((hash_table), (key), (var_name))
 
@@ -123,6 +134,8 @@ typedef const char* htbl_key_t;
    @param hash_table The hash table to search through (@see DEFTYPE_HASHTABLE()).
 
    @param key The key of the entry to look for. Same restrictions as @see htbl_insert() apply.
+
+   @returns Non-zero if the given key exists, or zero if the key was not found.
  */
 #define htbl_exists(hash_table, key) _htbl_exists((hash_table), (key))
 
