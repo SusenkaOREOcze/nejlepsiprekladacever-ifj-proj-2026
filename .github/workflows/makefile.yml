@@ -1,0 +1,21 @@
+name: Code check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy make gcc
+
+      - name: Run make check
+        run: make check
