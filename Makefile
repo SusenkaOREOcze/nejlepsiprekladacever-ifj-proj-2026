@@ -3,7 +3,7 @@ CFLAGS = -std=gnu23 -Wall -Wextra -Wpedantic
 CPPFLAGS = -Iinclude
 
 SRC = $(wildcard src/*.c)
-HEADERS = $(wildcard include/*.h)
+HEADERS = $(wildcard src/include/*.h)
 
 YELLOW = \033[33m
 GREEN = \033[32m
