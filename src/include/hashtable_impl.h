@@ -15,9 +15,7 @@
 #define _HTBL_IMPL_H
 
 #include "hashtable.h"
-#include <cstddef>
 #include <stddef.h>
-
 
 /*=====
   TYPES
@@ -27,22 +25,22 @@
    A hashtable entry containing the key, its hash and the data stored at that particular key.
 */
 typedef struct HashtableEntry {
-    /**
-       The key of the given entry.  When the key has the value of an empty string "\0", the entry is
-       considered *Invalid*; as if it has been deleted (note that this doesn't need to be the case!).
-    */
-    htbl_key_t key;
+	/**
+	   The key of the given entry.  When the key has the value of an empty string "\0", the entry is
+	   considered *Invalid*; as if it has been deleted (note that this doesn't need to be the case!).
+	*/
+	htbl_key_t key;
 
-    /**
-       The hash of the key field. This is used for table resizing, so that the hash does not have to be
-       recalculated for every entry.
-    */
-    size_t hash;
+	/**
+	   The hash of the key field. This is used for table resizing, so that the hash does not have to be
+	   recalculated for every entry.
+	*/
+	size_t hash;
 
-    /**
-       A byte array that stores the actual data at this particular key. This is a flexible array member.
-    */
-    char data[];
+	/**
+	   A byte array that stores the actual data at this particular key. This is a flexible array member.
+	*/
+	char data[];
 } htbl_entry_t;
 
 /**
@@ -54,32 +52,30 @@ typedef struct HashtableEntry {
    is the "implicit entry chaining" part).
 */
 typedef struct Hashtable {
-    /**
-       The size (length) of the hashtable array.
-    */
-    size_t size;
+	/**
+	   The size (length) of the hashtable array.
+	*/
+	size_t size;
 
-    /**
-       The number of _valid_ entries in the hash table. This means entries that don't have an empty key
-       (@see struct HashtableEntry).
-    */
-    size_t count;
+	/**
+	   The number of _valid_ entries in the hash table. This means entries that don't have an empty key
+	   (@see struct HashtableEntry).
+	*/
+	size_t count;
 
-    /**
-       A array of pointers to entries stored in the hash table. This is a flexible array member.
-    */
-    htbl_entry_t *array[];
+	/**
+	   A array of pointers to entries stored in the hash table. This is a flexible array member.
+	*/
+	htbl_entry_t *array[];
 } htbl_t;
 
 /**
    A set of options used for adjusting the behavior of the htbl_find_entry() function.
 */
 enum HashtableFindOptions {
-    HTBL_FIND_VALID = 0,
-    HTBL_FIND_INVALID,
+	HTBL_FIND_VALID = 0,
+	HTBL_FIND_INVALID,
 };
-
-
 
 /*=========
   FUNCTIONS
@@ -100,11 +96,11 @@ enum HashtableFindOptions {
    This very cool trick is from the following website:
    https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/#fnref:3. Give it a read!
 */
-#define _DEF_HASHTABLE(datatype)					\
-    union {								\
-        htbl_t *table;							\
-        datatype *payload;						\
-    }
+#define _DEF_HASHTABLE(datatype)                                                                             \
+	union {                                                                                                  \
+		htbl_t *table;                                                                                       \
+		datatype *payload;                                                                                   \
+	}
 
 /**
    Calculate a hash of the passed string for use by the hash table.
@@ -116,14 +112,14 @@ enum HashtableFindOptions {
 
    @returns the hash of the passed string.
 */
-static inline size_t hashtable_hash_func(const char *str) {
-    size_t hash = 5381;
-    int c;
+inline size_t hashtable_hash_func(const char *str) {
+	size_t hash = 5381;
+	int c;
 
-    while ((c = *str++))
-	hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+	while ((c = *str++))
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
-    return hash;
+	return hash;
 }
 
 /**
@@ -135,29 +131,12 @@ static inline size_t hashtable_hash_func(const char *str) {
 
    @param table The hash table to calculate the array index of.
 
-   @param hash_or_index Typically a hash of the key of an entry, but may also be a number representing the index
-   inside the table. This is useful for offsets within the array.
+   @param hash_or_index Typically a hash of the key of an entry, but may also be a number (because of modulo
+   arithmetic) representing the index inside the table. This is useful for offsets within the array.
 
    @returns the equivalent array index of the table for the given hash.
 */
-#define hashtable_calc_index(table, hash_or_index)	\
-    (hashOrIndex) % ((table)->size)
-
-/**
-   Find an entry with the given key in the given hash table.
-
-   @param table The table to search through.
-
-   @param key The key to look for.
-
-   @param entry_index A pointer to a variable in which to store the index of the found entry. May be NULL.
-
-   @param opts Options that adjust which entries may be retrieved (@see struct HashtableFindOptions).
-
-   @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
-*/
-static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
-                                     const enum HashtableFindOptions opts);
+#define hashtable_calc_index(table, hash_or_index) (hash_or_index) % ((table)->size)
 
 /**
    Calculate the load factor (the ratio between the number of entries and the table size) of the given table.
@@ -166,13 +145,7 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 
    @returns A _float_ in the range <0.f, 1.f) representing the current load factor.
 */
-#define hashtable_load_factor(table)					\
-    (!(table)->size ? 0.0f : ((float)(table)->count) / (table)->size)
-
-/**
-   The load factor which will cause the next entry inserted to inflate the size of the table.
-*/
-static constexpr float HTBL_INFLATE_LOAD_FACTOR = 0.64f;
+#define hashtable_load_factor(table) (!(table)->size ? 0.0f : ((float)(table)->count) / (table)->size)
 
 /**
    Create an empty hash table with a non-zero initial size.
@@ -188,8 +161,7 @@ htbl_stat_t hashtable_init(htbl_t **table, const size_t init_size);
 /**
    Wrapper macro to hide the implementation of the hashtable_init function. See @see htbl_init().
 */
-#define _htbl_init(hash_table, init_size)	\
-    hashtable_init(&(hashtbl).table, (size))
+#define _htbl_init(hash_table, init_size) hashtable_init(&(hashtbl).table, (size))
 
 /**
    Free the given table from memory.
@@ -203,8 +175,7 @@ htbl_stat_t hashtable_free(htbl_t **table);
 /**
    Wrapper macro to hide the implementation of the hashtable_free function. See @see htbl_init().
 */
-#define _htbl_free(hash_table)			\
-    hashtable_free(&(hash_table).table)
+#define _htbl_free(hash_table) hashtable_free(&(hash_table).table)
 
 /**
    Remove every entry from the table, leaving the table array still in memory.
@@ -220,10 +191,7 @@ htbl_stat_t hashtable_clear(htbl_t *table);
 
    I think you get it now.
 */
-#define _htbl_clear(hash_table)			\
-    hashtable_clear((hash_table).table)
-
-
+#define _htbl_clear(hash_table) hashtable_clear((hash_table).table)
 
 /**
    Insert an entry into the table at the given key with the given data.
@@ -247,9 +215,9 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 /**
    A wrapper macro to hide the hashtable_insert function.
 */
-#define _htbl_insert(hash_table, key, data)				\
-    hashtable_insert(&(hash_table).table, (key),			\
-		     (1 ? &(data) : (hash_table).payload), sizeof(*(hash_table).payload))
+#define _htbl_insert(hash_table, key, data)                                                                  \
+	hashtable_insert(&(hash_table).table, (key), (1 ? &(data) : (hash_table).payload),                       \
+	                 sizeof(*(hash_table).payload))
 
 /**
    Delete an entry from the hash table.
@@ -270,8 +238,7 @@ htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key);
 /**
    Wrapper macro to hide the hashtable_delete function.
 */
-#define _htbl_delete(hash_table, key)		\
-    hashtable_delete((hash_table).table, (key))
+#define _htbl_delete(hash_table, key) hashtable_delete((hash_table).table, (key))
 
 /**
    Retrieve an entry at a given key from the hash table.
@@ -282,6 +249,8 @@ htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key);
 
    @returns A pointer to the .data field of the entry struct (@see htbl_entry_t), or NULL if the entry is not
    found.
+
+   @todo This function could possible be inline, however that requires testing because it is used in a macro.
 */
 char *hashtable_retrieve(htbl_t *table, htbl_key_t key);
 
@@ -303,10 +272,10 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key);
    If you don't understand the semantics of the comma or ternary operator, look at cpp-reference or something.
 */
 #define _htbl_retrieve(hash_table, key, var_name)			\
-    ( hashtable_exists((hashtbl).table, (key)) ?			\
-      (var) = *(__typeof__((hashtbl).payload)) hashtable_retrieve((hashtbl).table, (key)) : \
-      (__typeof__(*(hashtbl).payload))0 ),				\
-    hashtable_exists((hashtbl).table, (key)) )
+	( hashtable_exists((hashtbl).table, (key)) ?			\
+	  (var) = *(__typeof__((hashtbl).payload)) hashtable_retrieve((hashtbl).table, (key)) : \
+	  (__typeof__(*(hashtbl).payload))0 ),				\
+	    hashtable_exists((hashtbl).table, (key)) )
 
 /**
    A predicate stating whether an item with a given key exists inside the hash table.
@@ -317,21 +286,16 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key);
 
    @returns true if an entry with the key exists, or false if not.
 */
-inline bool hashtable_exists(const htbl_t *table, htbl_key_t key);
+extern inline bool hashtable_exists(const htbl_t *table, htbl_key_t key);
 
 /**
    A wrapper for the hashtable_exists function.
 */
-#define _htbl_exists(hash_table, key)		\
-    hashtable_exists((hash_table).table, (key))
+#define _htbl_exists(hash_table, key) hashtable_exists((hash_table).table, (key))
 
-
-
-
-/* 'extern' declarations of all inline functions. This is required in case the compiler decides to not inline
- * the aforementioned functions. */
+/* 'extern' declarations of all inline functions. This is required in case the compiler decides not to inline
+   said functions. */
 extern size_t hashtable_hash_func(const char *str);
 extern bool hashtable_exists(const htbl_t *table, htbl_key_t key);
-
 
 #endif /* hashtable_impl.h included */

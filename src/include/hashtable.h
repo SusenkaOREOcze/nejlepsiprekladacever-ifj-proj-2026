@@ -27,25 +27,22 @@
    DEFTYPE_HASHTABLE(int) my_int_hashtable_t;
    @endcode
  */
-#define DEFTYPE_HASHTABLE(datatype)		\
-    typedef _DEF_HASHTABLE(datatype)
+#define DEFTYPE_HASHTABLE(datatype) typedef _DEF_HASHTABLE(datatype)
 
 /**
    A hashtable entry key.
  */
-typedef const char* htbl_key_t;
+typedef const char *htbl_key_t;
 
 /**
    A set of codes that are returned by most of the hash table functions (see their respective returns).
 */
 typedef enum HashtableStatusCode {
-    HTBLSTAT_OK = 0,
-    HTBLSTAT_BAD_ARG,
-    HTBLSTAT_BAD_ALLOC,
-    HTBLSTAT_INVALID_KEY,
+	HTBLSTAT_OK = 0,
+	HTBLSTAT_BAD_ARG,
+	HTBLSTAT_BAD_ALLOC,
+	HTBLSTAT_INVALID_KEY, // TODO: possibly remove this, might be useless
 } htbl_stat_t;
-
-
 
 /*=========
   FUNCTIONS
@@ -80,7 +77,6 @@ typedef enum HashtableStatusCode {
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if argument is invalid.
  */
 #define htbl_clear(hash_table) _htbl_clear((hash_table))
-
 
 /**
    Inserts an entry with a given key and data into the hash table.
@@ -138,6 +134,5 @@ typedef enum HashtableStatusCode {
    @returns Non-zero if the given key exists, or zero if the key was not found.
  */
 #define htbl_exists(hash_table, key) _htbl_exists((hash_table), (key))
-
 
 #endif /* hashtable.h included */
