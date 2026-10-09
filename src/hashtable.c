@@ -182,9 +182,10 @@ htbl_stat_t hashtable_clear(htbl_t *table) {
 		if (entry == NULL)
 			continue;
 
-		/* Free every allocated entry */
+		/* Free every allocated entry and set it to NULL */
 		free((char *)entry->key);
 		free(entry);
+		table->array[i] = NULL;
 	}
 
 	table->count = 0;
