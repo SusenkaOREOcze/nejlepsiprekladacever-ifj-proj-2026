@@ -120,6 +120,15 @@ static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
   Data structure operation definitions.
 */
 
+/**
+   Create an empty hash table with a non-zero initial size.
+
+   @param table A pointer to the _variable_ that holds the hash table (as it will be written indirectly).
+
+   @param init_size The initial capacity of the hash table. Must be greater than 0.
+
+   @returns @see htbl_stat_t.
+*/
 htbl_stat_t hashtable_init(htbl_t **table, const size_t init_size) {
 	if (!init_size || table == NULL)
 		return HTBLSTAT_BAD_ARG;
@@ -139,6 +148,13 @@ htbl_stat_t hashtable_init(htbl_t **table, const size_t init_size) {
 	return HTBLSTAT_OK;
 }
 
+/**
+   Free the given table from memory.
+
+   @param table A pointer to the variable holding the table that will be freed.
+
+   @return @see htbl_stat_t.
+*/
 htbl_stat_t hashtable_free(htbl_t **table) {
 	if (table == NULL || *table == NULL)
 		return HTBLSTAT_BAD_ARG;
@@ -150,6 +166,13 @@ htbl_stat_t hashtable_free(htbl_t **table) {
 	return HTBLSTAT_OK;
 }
 
+/**
+   Remove every entry from the table, leaving the table array still in memory.
+
+   @param table The table to clear.
+
+   @returns @see htbl_stat_t.
+*/
 htbl_stat_t hashtable_clear(htbl_t *table) {
 	if (table == NULL)
 		return HTBLSTAT_BAD_ARG;
@@ -168,6 +191,23 @@ htbl_stat_t hashtable_clear(htbl_t *table) {
 	return HTBLSTAT_OK;
 }
 
+/**
+   Insert an entry into the table at the given key with the given data.
+
+   This function allows the data argument to be of any type. Make sure you set the data_size properly (or
+   don't; disrespect the operating system, see what happens).
+
+   @param table The table to insert data into. This is a pointer to the variable that stores the table,
+   because this function can _resize_ the table under certain conditions.
+
+   @param key The key of the newly inserted entry.
+
+   @param data A pointer to the data to be added to the entry.
+
+   @param data_size How many bytes the data takes up in memory.
+
+   @returns @see htbl_stat_t.
+*/
 htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const size_t data_size) {
 	if (table == NULL || *table == NULL || !data_size || key[0] == '\0')
 		return HTBLSTAT_BAD_ARG;
@@ -224,6 +264,20 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 	return HTBLSTAT_OK;
 }
 
+/**
+   Delete an entry from the hash table.
+
+   This function is special in that the entry is not actually deallocated from memory, only its key
+   is. Afterwards the key has the empty string "\0" assigned to it. Any key in such form has the semantics of
+   _being invalid_ (also known as being "plugged"), i.e. its data should not be accessed (note that the data
+   is still very much there, as well as the hash).
+
+   @param table The hash table to delete the entry from.
+
+   @param key The key of the to-be-deleted entry.
+
+   @returns @see htbl_stat_t.
+*/
 htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
 	if (table == NULL || key[0] == '\0' || table->count == 0)
 		return HTBLSTAT_BAD_ARG;
@@ -241,6 +295,18 @@ htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
 	return HTBLSTAT_OK;
 }
 
+/**
+   Retrieve an entry at a given key from the hash table.
+
+   @param table The table to retrieve an entry from.
+
+   @param key The key of the sought-after entry.
+
+   @returns A pointer to the .data field of the entry struct (@see htbl_entry_t), or NULL if the entry is not
+   found.
+
+   @todo This function could possible be inline, however that requires testing because it is used in a macro.
+*/
 char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
 	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
 
@@ -249,6 +315,15 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
 	return entry->data;
 }
 
+/**
+   A predicate stating whether an item with a given key exists inside the hash table.
+
+   @param table A table to search through.
+
+   @param key The key of the entry to find.
+
+   @returns true if an entry with the key exists, or false if not.
+*/
 inline bool hashtable_exists(const htbl_t *table, htbl_key_t key) {
 	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
 	return (entry != NULL);
