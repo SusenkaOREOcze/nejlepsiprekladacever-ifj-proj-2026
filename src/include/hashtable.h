@@ -164,10 +164,10 @@ typedef enum HashtableStatusCode {
    If you don't understand the semantics of the comma or ternary operator, look at cpp-reference or something.
  */
 #define htbl_retrieve(hash_table, key, var_name)                                                             \
-	( hashtable_exists((hash_table).table, (key)) ?			\
-      (var_name) = *(__typeof__((hash_table).payload)) hashtable_retrieve((hash_table).table, (key)) : \
-      (__typeof__(*(hash_table).payload))0 ),				\
-	hashtable_exists((hash_table).table, (key)) )
+	((hashtable_exists((hash_table).table, (key))                                                            \
+	      ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve((hash_table).table, (key))    \
+	      : (__typeof__(*(hash_table).payload))0),                                                           \
+	 hashtable_exists((hash_table).table, (key)))
 
 /**
    A predicate that states if the given key exists in the hash table.
