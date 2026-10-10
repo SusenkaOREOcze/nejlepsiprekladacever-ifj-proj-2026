@@ -8,7 +8,18 @@
    @brief The implementation of the hash table data structure.
 */
 
+#ifdef HTBL_TEST
+
+#undef HTBL_TEST
 #include "include/hashtable_impl.h"
+#define HTBL_TEST
+
+#else /* HTBL_TEST defined */
+
+#include "include/hashtable_impl.h"
+
+#endif	/* HTBL_TEST not defined */
+
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +87,16 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 
 	return (opts == HTBL_FIND_INVALID && invalid_entry ? invalid_entry : cur_entry);
 }
+
+#ifdef HTBL_TEST
+
+htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
+                                    const enum HashtableFindOptions opts) {
+    return hashtable_find_entry(table, key, entry_index, opts);
+}
+
+#endif
+
 
 /**
    Resize the table to a bigger or smaller size.

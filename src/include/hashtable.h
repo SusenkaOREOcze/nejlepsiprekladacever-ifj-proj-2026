@@ -48,6 +48,8 @@ typedef enum HashtableStatusCode {
 /**
    Define a new hashtable which should hold data of type 'datatype'.
 
+   @param datatype An identifier of any complete data type (int, char, struct ...).
+
    Example usage for a hashtable that is to hold integers:
    @code
    DEFTYPE_HASHTABLE(int) my_int_hashtable_t;
@@ -56,11 +58,16 @@ typedef enum HashtableStatusCode {
                                 // (in this case, integers, but it could be automobiles)
    @endcode
 
-   Pay no mind to the union; you are obligated to do this because by using this header file, you have
-   implicitly signed a non-disclosement agreement which legally forbids you from explaining the internal
-   structure to yourself.
- */
+   @note The hash table data type that the user works with is a union, which the user does not know. This is
+   why every function that the user has access to is actually a function-like macro.
 
+   Why is the union here in the first place? The payload member is a "dummy" member, in that it will never be
+   used to access any data; it is merely there to store type information. This permits the use of the ternary
+   operator to issue warnings when, for example, inserting the wrong type into a table (@see _htbl_insert()).
+
+   This very cool trick is from the following website:
+   https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/#fnref:3. Give it a read!
+ */
 #define DEFTYPE_HASHTABLE(datatype)                                                                          \
 	typedef union {                                                                                          \
 		htbl_t *table;                                                                                       \

@@ -79,23 +79,6 @@ enum HashtableFindOptions {
   FUNCTIONS
   =========*/
 
-/**
-   Define a new hash table designated to store a given type.
-
-   @param datatype An identifier of (possibly) any complete data type (int, char, struct ...).
-
-   @note The hash table data type that the user works with is a union, which the user does not know. This is
-   why every function that the user has access to is actually a function-like macro.
-
-   Why is the union here in the first place? The payload member is a "dummy" member, in that it will never be
-   used to access any data; it is merely there to store type information. This permits the use of the ternary
-   operator to issue warnings when, for example, inserting the wrong type into a table (@see _htbl_insert()).
-
-   This very cool trick is from the following website:
-   https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/#fnref:3. Give it a read!
-*/
-// TODO: delete #define _DEF_HASHTABLE(datatype), but move the comment
-
 #ifndef HTBL_TEST
 
 /**
@@ -120,7 +103,12 @@ inline size_t hashtable_hash_func(const char *str) {
 
 extern inline size_t hashtable_hash_func(const char *str);
 
-#endif /* HTBL_TEST not defined */
+#else /* HTBL_TEST not defined */
+
+htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
+                                    const enum HashtableFindOptions opts);
+
+#endif	/* HTBL_TEST defined */
 
 /**
    Calculate the index inside of the hash table array from the passed hash (or index).
