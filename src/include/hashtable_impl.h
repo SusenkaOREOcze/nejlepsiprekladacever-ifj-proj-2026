@@ -10,8 +10,8 @@
    The definitions of all the important stuff that make this data type tick.
 */
 
-#ifndef _HTBL_IMPL_H
-#define _HTBL_IMPL_H
+#ifndef HTBL_IMPL_H
+#define HTBL_IMPL_H
 
 #include "hashtable.h"
 

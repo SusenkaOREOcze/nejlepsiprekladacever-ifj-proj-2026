@@ -9,6 +9,7 @@
 */
 
 #include "include/hashtable_impl.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,12 +32,22 @@ static constexpr float HTBL_INFLATE_LOAD_FACTOR = 0.64f;
 
    @param entry_index A pointer to a variable in which to store the index of the found entry. May be NULL.
 
+   @warning If the given table is full and has no free (NULL) slot for a new entry, this parameter _will be
+   set to the size of the table_ (i.e., an invalid index). If the table is NULL, this value is set to
+   ULONG_MAX. Remember to check its value before use!
+
    @param opts Options that adjust which entries may be retrieved (@see struct HashtableFindOptions).
 
    @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
 */
 static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
                                           const enum HashtableFindOptions opts) {
+	if (table == NULL || key == NULL) {
+		fprintf(stderr, "htbl_find_entry: provided table doesn't exist!\n");
+		if (entry_index != NULL)
+			*entry_index = ULONG_MAX;
+		return NULL;
+	}
 	size_t key_hash = hashtable_hash_func(key);
 	size_t base_index = hashtable_calc_index(table, key_hash);
 	int offset = -1;
@@ -53,12 +64,14 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 
 		if (offset >= (int)table->size) { // TODO: update to a custom logging solution?
 			fprintf(stderr, "htbl_find_entry: table size has been exceeded!\n");
+			if (entry_index != NULL)
+				*entry_index = table->size;
 			return NULL;
 		}
 	} while (cur_entry != NULL && strcmp(cur_entry->key, key) != 0);
 
 	/* Give the caller the index when required */
-	if (entry_index != NULL && (opts == HTBL_FIND_VALID || invalid_entry == NULL))
+	if (entry_index != NULL)
 		*entry_index = (base_index + offset) % table->size;
 
 	return (opts == HTBL_FIND_INVALID && invalid_entry ? invalid_entry : cur_entry);
@@ -182,8 +195,10 @@ htbl_stat_t hashtable_clear(htbl_t *table) {
 		if (entry == NULL)
 			continue;
 
-		/* Free every allocated entry and set it to NULL */
-		free((char *)entry->key);
+		/* hashtable_delete sets keys to a static string -> make sure this hasn't happened
+		   I thank our benefactors (Lukáš) for finding this bug */
+		if (entry->key[0] != '\0')
+			free((char *)entry->key);
 		free(entry);
 		table->array[i] = NULL;
 	}
@@ -210,7 +225,7 @@ htbl_stat_t hashtable_clear(htbl_t *table) {
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const size_t data_size) {
-	if (table == NULL || *table == NULL || !data_size || key[0] == '\0')
+	if (table == NULL || *table == NULL || data == NULL || !data_size || key == NULL || key[0] == '\0')
 		return HTBLSTAT_BAD_ARG;
 
 	/* Resize the table if needed */
@@ -220,14 +235,17 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 			return HTBLSTAT_BAD_ALLOC;
 	}
 
-	size_t key_hash = hashtable_hash_func(key), entryIndex;
-	htbl_entry_t *entry = hashtable_find_entry(*table, key, &entryIndex, HTBL_FIND_INVALID);
+	/* See if an entry exists already */
+	size_t key_hash = hashtable_hash_func(key), entry_index;
+	htbl_entry_t *entry = hashtable_find_entry(*table, key, &entry_index, HTBL_FIND_INVALID);
+	if (entry == NULL && entry_index == (*table)->size)
+		return HTBLSTAT_INTERNAL_FAIL;
 
 	/* Now either entry == NULL (is free) or it exists, in which case it _may_ be invalid */
 	if (entry == NULL) { /* Allocate a new entry and add data to it */
 		htbl_entry_t *new_entry = malloc(sizeof(htbl_entry_t) + data_size);
 		if (new_entry == NULL)
-			return 1;
+			return HTBLSTAT_BAD_ALLOC;
 
 		memcpy(new_entry->data, data, data_size);
 
@@ -242,7 +260,7 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 		strcpy((char *)new_key, key);
 
 		new_entry->key = new_key;
-		(*table)->array[entryIndex] = new_entry;
+		(*table)->array[entry_index] = new_entry;
 		(*table)->count++;
 
 	} else { /* The entry exists - update its data and potentially its key (if it is invalid) */
@@ -256,7 +274,7 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 				return HTBLSTAT_BAD_ALLOC;
 			strncpy((char *)new_key, key, key_length);
 
-			entry->key = new_key; /* Note: entry->key is assumed to be freed */
+			entry->key = new_key; /* Note: entry->key is freed by hashtable_delete() */
 			entry->hash = key_hash;
 			(*table)->count++;
 		}
@@ -280,8 +298,10 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
-	if (table == NULL || key[0] == '\0' || table->count == 0)
+	if (table == NULL || key == NULL || key[0] == '\0')
 		return HTBLSTAT_BAD_ARG;
+	if (table->count == 0)
+		return HTBLSTAT_OK;
 
 	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
 	/* Empty entry - nothing to delete */
@@ -304,16 +324,16 @@ htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
    @param key The key of the sought-after entry.
 
    @returns A pointer to the .data field of the entry struct (@see htbl_entry_t), or NULL if the entry is not
-   found.
+   found or the table doesn't exist.
 
-   @todo This function could possible be inline, however that requires testing because it is used in a macro.
+   @todo This function could possibly be inline, however that requires testing because it is used in a macro.
 */
 char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
-	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
-
-	if (entry == NULL)
+	if (table == NULL)
 		return NULL;
-	return entry->data;
+
+	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
+	return (entry != NULL ? entry->data : NULL);
 }
 
 /**
@@ -326,6 +346,9 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
    @returns true if an entry with the key exists, or false if not.
 */
 inline bool hashtable_exists(const htbl_t *table, htbl_key_t key) {
+	if (table == NULL)
+		return NULL;
+
 	htbl_entry_t *entry = hashtable_find_entry(table, key, NULL, HTBL_FIND_VALID);
 	return (entry != NULL);
 }

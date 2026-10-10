@@ -12,8 +12,8 @@
    (you wanted to)-
 */
 
-#ifndef _HASHTABLE_H
-#define _HASHTABLE_H
+#ifndef HASHTABLE_H
+#define HASHTABLE_H
 
 #include <stddef.h>
 
@@ -38,6 +38,7 @@ typedef enum HashtableStatusCode {
 	HTBLSTAT_OK = 0,
 	HTBLSTAT_BAD_ARG,
 	HTBLSTAT_BAD_ALLOC,
+	HTBLSTAT_INTERNAL_FAIL
 } htbl_stat_t;
 
 /*====================
@@ -164,10 +165,13 @@ typedef enum HashtableStatusCode {
    If you don't understand the semantics of the comma or ternary operator, look at cpp-reference or something.
  */
 #define htbl_retrieve(hash_table, key, var_name)                                                             \
-	((hashtable_exists((hash_table).table, (key))                                                            \
-	      ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve((hash_table).table, (key))    \
-	      : (__typeof__(*(hash_table).payload))0),                                                           \
-	 hashtable_exists((hash_table).table, (key)))
+	({                                                                                                       \
+		const bool htbl_retrieve_key_exists = hashtable_exists((hash_table).table, (key));                   \
+		((htbl_retrieve_key_exists ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve(     \
+		                                 (hash_table).table, (key))                                          \
+		                           : (__typeof__(*(hash_table).payload))0),                                  \
+		 htbl_retrieve_key_exists);                                                                          \
+	})
 
 /**
    A predicate that states if the given key exists in the hash table.
