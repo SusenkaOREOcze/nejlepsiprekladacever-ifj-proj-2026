@@ -95,6 +95,10 @@ htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t 
     return hashtable_find_entry(table, key, entry_index, opts);
 }
 
+size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
+    return hashtable_hash_func(key) % size;
+}
+
 #endif
 
 
@@ -137,7 +141,13 @@ static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 		if (old_entry == NULL)
 			continue;
 
-		/* Note: this includes _invalid keys_ (key=="\0") as well; this is why their hash is kept */
+		/* Invalid entries are removed from the table (increases efficiency) */
+		if (old_entry->key[0] == '\0') {
+		    free(old_entry);
+		    continue;
+		}
+
+		/* Valid entries are inserted the same way as the function hashtable_insert() */
 		size_t new_index = hashtable_calc_index(new_table, old_entry->hash);
 		while (new_table->array[hashtable_calc_index(new_table, new_index)] != NULL)
 			new_index++;

@@ -108,6 +108,8 @@ extern inline size_t hashtable_hash_func(const char *str);
 htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
                                     const enum HashtableFindOptions opts);
 
+size_t debug_calc_index_from_key(htbl_key_t key, const size_t size);
+
 #endif	/* HTBL_TEST defined */
 
 /**
