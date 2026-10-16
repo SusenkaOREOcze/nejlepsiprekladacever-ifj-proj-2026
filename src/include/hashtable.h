@@ -66,7 +66,7 @@ typedef enum HashtableStatusCode {
    operator to issue warnings when, for example, inserting the wrong type into a table (@see _htbl_insert()).
 
    This very cool trick is from the following website:
-   https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/#fnref:3. Give it a read!
+   @link https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/. Give it a read!
  */
 #define DEFTYPE_HASHTABLE(datatype)                                                                          \
 	typedef union {                                                                                          \
@@ -122,14 +122,14 @@ typedef enum HashtableStatusCode {
    @param key A string representing the key of the entry. Must contain at least one character. The argument
    may be a string literal.
 
-   @param data The data to add into the inserted entry. _Must be an l-value_ (an addressable argument) of the
-   same type as the value type of the hash table (@see DEFTYPE_HASHTABLE()).
+   @param data The data to add into the inserted entry. This must be a pointer to the same type as the value
+   type of the hash table (@see DEFTYPE_HASHTABLE()).
 
    @returns HTBLSTAT_OK on success, HTBLSTAT_BAD_ARG if one or more arguments make no sense, or HTBL_BAD_ALLOC
    if allocation fails.
  */
 #define htbl_insert(hash_table, key, data)                                                                   \
-	hashtable_insert(&(hash_table).table, (key), (1 ? &(data) : (hash_table).payload),                       \
+	hashtable_insert(&(hash_table).table, (key), (1 ? (data) : (hash_table).payload),                       \
 	                 sizeof(*(hash_table).payload))
 
 /**

@@ -18,7 +18,7 @@
 
 #include "include/hashtable_impl.h"
 
-#endif	/* HTBL_TEST not defined */
+#endif /* HTBL_TEST not defined */
 
 #include <limits.h>
 #include <stdio.h>
@@ -85,22 +85,22 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 	if (entry_index != NULL)
 		*entry_index = (base_index + offset) % table->size;
 
-	return (opts == HTBL_FIND_INVALID && invalid_entry ? invalid_entry : cur_entry);
+	/* invalid_entry guaranteed to be NULL if opts != HTBL_FIND_INVALID */
+	return cur_entry ?: invalid_entry;
 }
 
 #ifdef HTBL_TEST
 
 htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
                                     const enum HashtableFindOptions opts) {
-    return hashtable_find_entry(table, key, entry_index, opts);
+	return hashtable_find_entry(table, key, entry_index, opts);
 }
 
 size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
-    return hashtable_hash_func(key) % size;
+	return hashtable_hash_func(key) % size;
 }
 
 #endif
-
 
 /**
    Resize the table to a bigger or smaller size.
@@ -143,8 +143,8 @@ static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 
 		/* Invalid entries are removed from the table (increases efficiency) */
 		if (old_entry->key[0] == '\0') {
-		    free(old_entry);
-		    continue;
+			free(old_entry);
+			continue;
 		}
 
 		/* Valid entries are inserted the same way as the function hashtable_insert() */
@@ -282,13 +282,14 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 
 		/* Populate the new entry with data */
 		new_entry->hash = key_hash;
+		const size_t key_length = strlen(key);
 
-		htbl_key_t new_key = calloc(strlen(key) + 1, sizeof(char));
+		htbl_key_t new_key = calloc(key_length + 1, sizeof(char));
 		if (new_key == NULL) {
 			free(new_entry);
 			return HTBLSTAT_BAD_ALLOC;
 		}
-		strcpy((char *)new_key, key);
+		strncpy((char *)new_key, key, key_length);
 
 		new_entry->key = new_key;
 		(*table)->array[entry_index] = new_entry;
