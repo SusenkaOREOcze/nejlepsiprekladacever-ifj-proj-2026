@@ -9,9 +9,10 @@ HeaderFilterRegex: '.*'
 FormatStyle: file
 
 CheckOptions:
-  # Variables: snake_case
+  # Variables (including local constants): snake_case
   readability-identifier-naming.VariableCase: lower_case
   readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.LocalConstantCase: lower_case
 
   # Functions: snake_case
   readability-identifier-naming.FunctionCase: lower_case
@@ -32,5 +33,7 @@ CheckOptions:
   # Macros: UPPER_SNAKE_CASE
   readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
 
-  # Constants: UPPER_SNAKE_CASE
-  readability-identifier-naming.ConstantCase: UPPER_CASE
+  # Constants (except for local constants): UPPER_SNAKE_CASE
+  readability-identifier-naming.StaticConstantCase: UPPER_CASE
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE
