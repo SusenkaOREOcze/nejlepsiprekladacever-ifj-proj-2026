@@ -377,7 +377,7 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
 
    @returns true if an entry with the key exists, or false if not.
 */
-inline bool hashtable_exists(const htbl_t *table, htbl_key_t key) {
+bool hashtable_exists(const htbl_t *table, htbl_key_t key) {
 	if (table == NULL)
 		return NULL;
 
