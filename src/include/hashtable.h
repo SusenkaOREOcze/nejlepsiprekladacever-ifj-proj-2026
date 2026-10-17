@@ -23,7 +23,7 @@
 
 /**
    A hashtable entry key. No, it won't unlock any locks.
- */
+*/
 typedef const char *htbl_key_t;
 
 /**
@@ -67,7 +67,7 @@ typedef enum HashtableStatusCode {
 
    This very cool trick is from the following website:
    @link https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/. Give it a read!
- */
+*/
 #define DEFTYPE_HASHTABLE(datatype)                                                                          \
 	typedef union {                                                                                          \
 		htbl_t *table;                                                                                       \
@@ -83,7 +83,7 @@ typedef enum HashtableStatusCode {
 
    @returns HTBLSTAT_OK on successful allocation, HTBLSTAT_BAD_ALLOC on bad allocation, or HTBLSTAT_BAD_ARG if
    one of the arguments doesn't make sense.
- */
+*/
 #define htbl_init(hash_table, init_size) hashtable_init(&(hash_table).table, (init_size))
 
 /**
@@ -94,7 +94,7 @@ typedef enum HashtableStatusCode {
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if the argument is invalid.
 
    @note The parameter is set to NULL if this function succeeds.
- */
+*/
 #define htbl_free(hash_table) hashtable_free(&(hash_table).table)
 
 /**
@@ -106,7 +106,7 @@ typedef enum HashtableStatusCode {
    @param hash_table The table whose entries to clear. Type must be @see DEFTYPE_HASHTABLE().
 
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if argument is invalid.
- */
+*/
 #define htbl_clear(hash_table) hashtable_clear((hash_table).table)
 
 /**
@@ -127,9 +127,9 @@ typedef enum HashtableStatusCode {
 
    @returns HTBLSTAT_OK on success, HTBLSTAT_BAD_ARG if one or more arguments make no sense, or HTBL_BAD_ALLOC
    if allocation fails.
- */
+*/
 #define htbl_insert(hash_table, key, data)                                                                   \
-	hashtable_insert(&(hash_table).table, (key), (1 ? (data) : (hash_table).payload),                       \
+	hashtable_insert(&(hash_table).table, (key), (1 ? (data) : (hash_table).payload),                        \
 	                 sizeof(*(hash_table).payload))
 
 /**
@@ -146,7 +146,7 @@ typedef enum HashtableStatusCode {
    arguments make no sense.
 
    @note The return code when no deletion takes place because of a missing key may change in the future.
- */
+*/
 #define htbl_delete(hash_table, key) hashtable_delete((hash_table).table, (key))
 
 /**
@@ -162,15 +162,14 @@ typedef enum HashtableStatusCode {
 
    @note This thing is slightly scary, but I will attempt to explain it now, so prepare your brain cells:
    + The parentheses use the comma operator to evaluate an expression (specifically the ternary operator,
-   covered in the next paragraph), then throw its value away and evaluate a second expression, the
-   htbl_exists(...) function, whose value is ultimately returned by the macro.
-   + The inner first expression, the ternary operator, is used such that its 'true' path is evaluated when the
-   key is found; when this happens, the var_name identificator is written to. Otherwise the other path is
-   evaluated, which simply returns 0 cast to the type of the payload (_this is why that union was used!_). The
-   benefit of this? When var_name is a variable of a different type, the compiler will sound a warning of
-   mismatched types inside the ternary operator.
-   If you don't understand the semantics of the comma or ternary operator, look at cpp-reference or something.
- */
+   covered in the next paragraph), then throw its value away and evaluate the second expression, which is just
+   htbl_retrieve_key_exists, whose value is the value of the entire statement.
+   + The ternary operator takes advantage of the fact that the assignment operator in C has a value (and
+   therefor, a type). When the 'true' branch is evaluated (whenever a key is found), var_name has the value at
+   that key assigned to it, otherwise the 'false' branch is evaluated, which casts 0 to _the same value as the
+   payload member_. Because the C standard forbids mismatched ternary operator types, this will cause the
+   compiler to emit a warning whenever you attempt to retrieve data into a variable with the wrong type.
+*/
 #define htbl_retrieve(hash_table, key, var_name)                                                             \
 	({                                                                                                       \
 		const bool htbl_retrieve_key_exists = hashtable_exists((hash_table).table, (key));                   \
@@ -188,7 +187,7 @@ typedef enum HashtableStatusCode {
    @param key The key of the entry to look for. Same restrictions as @see htbl_insert() apply.
 
    @returns Non-zero if the given key exists, or zero if the key was not found.
- */
+*/
 #define htbl_exists(hash_table, key) hashtable_exists((hash_table).table, (key))
 
 /*=========
