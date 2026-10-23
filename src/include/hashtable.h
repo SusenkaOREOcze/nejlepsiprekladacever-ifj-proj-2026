@@ -175,7 +175,7 @@ typedef enum HashtableStatusCode {
 		const bool htbl_retrieve_key_exists = hashtable_exists((hash_table).table, (key));                   \
 		((htbl_retrieve_key_exists ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve(     \
 		                                 (hash_table).table, (key))                                          \
-		                           : (__typeof__(*(hash_table).payload))0),                                  \
+		                           : (__typeof__(*(hash_table).payload)){0}),                                \
 		 htbl_retrieve_key_exists);                                                                          \
 	})
 
