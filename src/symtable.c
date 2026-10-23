@@ -76,16 +76,19 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope) {
   Symtable init & free
   ====================*/
 
-symt_stat_t symt_init(symt_t *sym_table) {
+symt_stat_t symt_init(symt_t **const sym_table) {
 	if (sym_table == NULL)
 		return SYMTSTAT_BAD_ARG;
 	symt_stat_t result = SYMTSTAT_OK;
-
+	symt_t *new_table = malloc(sizeof(symt_t));
+	if (new_table == NULL)
+		return SYMTSTAT_BAD_ALLOC;
+	
 	/* Initialize an empty symbol table */
-	sym_table->scope_top = NULL;
-	sym_table->standby_top = NULL;
-	sym_table->scope_depth = 0;
-	sym_table->uid_accum = 0;
+	new_table->scope_top = NULL;
+	new_table->standby_top = NULL;
+	new_table->scope_depth = 0;
+	new_table->uid_accum = 0;
 
 	/* Add the global scope onto the main stack */
 	symt_scope_t *new_global_scope = NULL;
@@ -93,7 +96,7 @@ symt_stat_t symt_init(symt_t *sym_table) {
 	if (result != SYMTSTAT_OK)
 		goto FAIL_ALLOC; /* Scary goto statement */
 
-	result = symt_push_scope(&sym_table->scope_top, new_global_scope);
+	result = symt_push_scope(&new_table->scope_top, new_global_scope);
 	if (result != SYMTSTAT_OK)
 		goto FAIL_PUSH;
 
@@ -104,27 +107,30 @@ symt_stat_t symt_init(symt_t *sym_table) {
 		if (result != SYMTSTAT_OK)
 			goto FAIL_ALLOC;
 
-		result = symt_push_scope(&sym_table->standby_top, new_scope);
+		result = symt_push_scope(&new_table->standby_top, new_scope);
 		if (result != SYMTSTAT_OK)
 			goto FAIL_PUSH;
 	}
+
+	*sym_table = new_table;
 	return result;
 
 FAIL_PUSH:
 	fprintf(stderr, "symt_init: failed to push scope onto stack\n");
+	*sym_table = new_table;
 	return result;
 
 FAIL_ALLOC:
 	/* If more than 1 allocation fails, this frees all the allocated memory thus far before exitting */
-	while (sym_table->standby_top != NULL) {
-		symt_scope_t *cur_scope = sym_table->standby_top;
-		sym_table->standby_top = cur_scope->prev; /* Descend down the stack */
+	while (new_table->standby_top != NULL) {
+		symt_scope_t *cur_scope = new_table->standby_top;
+		new_table->standby_top = cur_scope->prev; /* Descend down the stack */
 		symt_free_scope(cur_scope);
 	}
 
-	if (sym_table->scope_top != NULL) {
-		symt_free_scope(sym_table->scope_top);
-		sym_table->scope_top = NULL;
+	if (new_table->scope_top != NULL) {
+		symt_free_scope(new_table->scope_top);
+		new_table->scope_top = NULL;
 	}
 	return result;
 }
@@ -147,8 +153,7 @@ symt_stat_t symt_free(symt_t *sym_table) {
 		symt_free_scope(cur_scope);
 	}
 
-	sym_table->scope_depth = 0;
-	sym_table->uid_accum = 0;
+	free(sym_table);
 	return SYMTSTAT_OK;
 }
 
