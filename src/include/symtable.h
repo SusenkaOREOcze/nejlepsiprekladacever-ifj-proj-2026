@@ -29,6 +29,7 @@ typedef enum SymtableStatusCode {
 	SYMTSTAT_BAD_ARG,
 	SYMTSTAT_BAD_ALLOC,
 	SYMTSTAT_NO_SYMBOL,
+	SYMTSTAT_NO_SCOPE,
 } symt_stat_t;
 
 /**
@@ -46,12 +47,13 @@ typedef enum SymtableDataType {
    A symbol from the symbol table. How symbolic.
 
    @note The UID field is defined because it is possible to have several instances of a variable with the same
-   name across different scopes with the same depth.
+   name across different scopes with the same depth. In case you were wondering, the UID can hold 2^64 - 1, or
+   1.84467440737e+19 values. Good luck making that many symbols.
 */
 typedef struct SymtableSymbol {
 	symt_data_type_t data_type;
 	bool mutable; //!< States if this is symbol is of the IFJ26 storage class var (true) or val (false).
-	const unsigned long long uid; //!< Unique identfier of this specific symbol.
+	unsigned long long uid; //!< Unique identfier of this specific symbol.
 } symt_symbol_t;
 
 /**
@@ -69,7 +71,7 @@ typedef struct Symtable symt_t;
 /**
    Initialize a symbol table in memory. The scope depth is initialized to 0 (global).
 
-   @param sym_table A pointer to a symbol table variable.
+   @param[out] sym_table A pointer to a symbol table variable.
    @returns SYMTSTAT_OK on success, an error code otherwise.
 */
 symt_stat_t symt_init(symt_t *sym_table);
@@ -77,13 +79,15 @@ symt_stat_t symt_init(symt_t *sym_table);
 /**
    Rid the memory of a symbol table.
 
-   @param sym_table The symbol table to destroy.
+   @param[out] sym_table The symbol table to destroy.
    @returns SYMTSTAT_OK on success, an error code otherwise.
 */
 symt_stat_t symt_free(symt_t *sym_table);
 
 /**
    Increment the current scope depth.
+
+   @note If this function returns SYMTSTAT_BAD_ALLOC, the scope depth is still increased.
 
    @param sym_table The symbol table to work with.
    @returns SYMTSTAT_OK on success, an error code otherwise.
@@ -94,13 +98,14 @@ symt_stat_t symt_inc_scope_depth(symt_t *sym_table);
    Decrement the current scope depth.
 
    @note If the current scope depth is 0 (global scope), this function does nothing.
+
    @param sym_table The symbol table to work with.
    @returns SYMTSTAT_OK on success, an error code otherwise.
 */
 symt_stat_t symt_dec_scope_depth(symt_t *sym_table);
 
 /**
-   Insert an identifier-symbol pair into a table.
+   Insert an identifier-symbol pair into a symbol table.
 
    @note The semantics of this operation vary based on the current state. If a symbol is not defined in the
    current scope, a new one is inserted; otherwise the existing symbol is overwritten. Because it is possible
@@ -112,7 +117,7 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table);
    @param[in] symbol A structure containing the symbol's data.
    @returns SYMTSTAT_OK on success, an error otherwise.
 */
-symt_stat_t symt_insert(symt_t *sym_table, const char *ident, const symt_symbol_t *symbol);
+symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *symbol);
 
 /**
    Find a symbol with the given identifier in a symbol table and return its data.
