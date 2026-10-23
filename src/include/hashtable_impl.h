@@ -110,7 +110,7 @@ htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t 
 
 size_t debug_calc_index_from_key(htbl_key_t key, const size_t size);
 
-#endif	/* HTBL_TEST defined */
+#endif /* HTBL_TEST defined */
 
 /**
    Calculate the index inside of the hash table array from the passed hash (or index).
