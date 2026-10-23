@@ -69,12 +69,14 @@ typedef struct Symtable symt_t;
   ====================*/
 
 /**
-   Initialize a symbol table in memory. The scope depth is initialized to 0 (global).
+   Allocate and initialize a symbol table in memory. The scope depth is initialized to 0 (global).
 
-   @param[out] sym_table A pointer to a symbol table variable.
+   @note If this function fails to allocate the table, sym_table will be left unchanged.
+
+   @param[out] sym_table A pointer to the variable that'll store the new table.
    @returns SYMTSTAT_OK on success, an error code otherwise.
 */
-symt_stat_t symt_init(symt_t *sym_table);
+symt_stat_t symt_init(symt_t **const sym_table);
 
 /**
    Rid the memory of a symbol table.

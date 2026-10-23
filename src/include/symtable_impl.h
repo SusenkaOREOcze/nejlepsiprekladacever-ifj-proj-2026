@@ -51,6 +51,7 @@ struct Symtable {
   FUNCTIONS
   =========*/
 
+#ifndef TEST_SYMTABLE
 /**
    Erase the contents of a given scope.
 
@@ -97,7 +98,10 @@ inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t *
 inline void symt_free_scope(symt_scope_t *scope);
 
 /* In case of missing -O2 flag or some other goofy compilation stuff */
-extern symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope);
-extern void symt_free_scope(symt_scope_t *scope);
+extern inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope);
+extern inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope);
+extern inline void symt_free_scope(symt_scope_t *scope);
 
-#endif
+#endif /* TEST_SYMTABLE no defined */
+
+#endif /* symtable.h included */
