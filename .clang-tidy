@@ -9,28 +9,74 @@ HeaderFilterRegex: '.*'
 FormatStyle: file
 
 CheckOptions:
-  # Variables: snake_case
-  readability-identifier-naming.VariableCase: lower_case
-  readability-identifier-naming.ParameterCase: lower_case
 
-  # Functions: snake_case
+  # ===========
+  # VARIABLES
+  # ===========
+
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.LocalVariableCase: lower_case
+  readability-identifier-naming.GlobalVariableCase: lower_case
+  readability-identifier-naming.StaticVariableCase: lower_case
+
+  # Parameters are always normal snake_case,
+  # even when their type is const.
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.ConstantParameterCase: lower_case
+  readability-identifier-naming.ConstantPointerParameterCase: lower_case
+
+  # Struct/union members
+  readability-identifier-naming.MemberCase: lower_case
+
+  # ===========
+  # FUNCTIONS
+  # ===========
+
   readability-identifier-naming.FunctionCase: lower_case
 
-  # Struct tags: PascalCase
+  # ===========
+  # TYPES
+  # ===========
+
+  # struct FooBar
   readability-identifier-naming.StructCase: CamelCase
 
-  # Typedef/type aliases: snake_case_t
+  # union FooBar
+  readability-identifier-naming.UnionCase: CamelCase
+
+  # enum FooBar
+  readability-identifier-naming.EnumCase: CamelCase
+
+  # typedef foo_bar_t
   readability-identifier-naming.TypedefCase: lower_case
   readability-identifier-naming.TypedefSuffix: '_t'
 
-  # Enums: PascalCase
-  readability-identifier-naming.EnumCase: CamelCase
+  # ===========
+  # ENUM VALUES
+  # ===========
 
-  # Enum members: UPPER_SNAKE_CASE
   readability-identifier-naming.EnumConstantCase: UPPER_CASE
 
-  # Macros: UPPER_SNAKE_CASE
+  # ===========
+  # MACROS
+  # ===========
+
   readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
 
-  # Constants: UPPER_SNAKE_CASE
+  # ===========
+  # CONSTANTS
+  # ===========
+
   readability-identifier-naming.ConstantCase: UPPER_CASE
+  readability-identifier-naming.LocalConstantCase: lower_case
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.StaticConstantCase: UPPER_CASE
+
+  # ===========
+  # C23 CONSTEXPR
+  # ===========
+
+  readability-identifier-naming.ConstexprVariableCase: UPPER_CASE
+  readability-identifier-naming.LocalConstexprVariableCase: UPPER_CASE
+  readability-identifier-naming.GlobalConstexprVariableCase: UPPER_CASE
+  readability-identifier-naming.StaticConstexprVariableCase: UPPER_CASE
