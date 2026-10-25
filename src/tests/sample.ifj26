@@ -1,0 +1,8 @@
+import ifj26.*
+
+@main def run(): Unit =
+  val limit: Int = 3
+  var index = 0
+  while index < limit do
+    print("iteration: " + toStr(index))
+    index = index + 1

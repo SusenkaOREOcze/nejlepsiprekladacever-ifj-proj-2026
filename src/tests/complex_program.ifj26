@@ -1,0 +1,14 @@
+import ifj26.*
+
+@main def run(): Unit =
+  val limit: Int = 3
+  var index = 0
+  /* A multiline comment
+     that separates logical lines. */
+  while index < limit do
+    if index == 1 then
+      print("""iteration:
+index \\ncontinues here""")
+    else
+      print("iteration = " + toStr(index))
+    index = index + 1
