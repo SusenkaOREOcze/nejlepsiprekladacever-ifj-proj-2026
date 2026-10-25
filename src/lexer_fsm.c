@@ -2,8 +2,13 @@
  * @file lexer_fsm.c
  * @author xkralil00 (SusenkaOREOcze)
  * @date 2026-10-10
- * @brief Finite-state scanner for IFJ26 terminals
+ * @brief Alternative finite-state scanner for IFJ26 terminals.
  */
+
+//
+//	TODO: Cleanup the copilot comments, because some of them are not really usefull.
+//	TL;DR: yes copilot is used as a commenting tool.. because "laziness"
+//
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -101,6 +106,11 @@ static lexer_result_t builder_grow(lexer_t *lexer, text_builder_t *builder, size
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
 static lexer_result_t builder_append(lexer_t *lexer, text_builder_t *builder, int character) {
+	if (builder->length > SIZE_MAX - 2) {
+		lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "token text is too long");
+		return LEXER_RESULT_MEMORY_ERROR;
+	}
+
 	lexer_result_t result = builder_grow(lexer, builder, builder->length + 2);
 	if (result != LEXER_RESULT_OK) {
 		return result;
@@ -150,6 +160,11 @@ static lexer_result_t advance_input(lexer_t *lexer) {
 	}
 
 	int consumed = lexer->input;
+	if ((consumed == '\n' && lexer->line == SIZE_MAX) || (consumed != '\n' && lexer->column == SIZE_MAX)) {
+		lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "source position is too large");
+		return lexer->error.code;
+	}
+
 	lexer->input = fgetc(lexer->source);
 
 	if (lexer->input == EOF && ferror(lexer->source)) {
@@ -168,7 +183,7 @@ static lexer_result_t advance_input(lexer_t *lexer) {
 }
 
 /**
- * @brief Looks at the following source character without storing it in lexer state.
+ * @brief Peer at the following source character.
  *
  * C guarantees one character of pushback [ungetc()].
  * @link https://en.cppreference.com/c/io/ungetc#:~:text=If%20ungetc%20is,of%20ungetc.
@@ -230,10 +245,9 @@ static lexer_result_t consume_input(lexer_t *lexer) {
  * @param type Recognized terminal type.
  * @param location Position of the token's first source character.
  * @param builder Builder that owns the lexeme.
- * @return Always LEXER_RESULT_OK.
  */
-static lexer_result_t make_token(token_t *out_token, token_type_t type, token_location_t location,
-                                 text_builder_t *builder) {
+static void make_token(token_t *out_token, token_type_t type, token_location_t location,
+                       text_builder_t *builder) {
 	size_t length = builder->length;
 
 	*out_token = (token_t){
@@ -242,8 +256,6 @@ static lexer_result_t make_token(token_t *out_token, token_type_t type, token_lo
 	    .lexeme = builder_finish(builder),
 	    .length = length,
 	};
-
-	return LEXER_RESULT_OK;
 }
 
 /**
@@ -252,17 +264,14 @@ static lexer_result_t make_token(token_t *out_token, token_type_t type, token_lo
  * @param out_token Token to fill.
  * @param type Generated layout terminal type.
  * @param location Position where the layout terminal occurs.
- * @return Always LEXER_RESULT_OK.
  */
-static lexer_result_t make_layout_token(token_t *out_token, token_type_t type, token_location_t location) {
+static void make_layout_token(token_t *out_token, token_type_t type, token_location_t location) {
 	*out_token = (token_t){
 	    .type = type,
 	    .location = location,
 	    .lexeme = NULL,
 	    .length = 0,
 	};
-
-	return LEXER_RESULT_OK;
 }
 
 /**
@@ -272,7 +281,7 @@ static lexer_result_t make_layout_token(token_t *out_token, token_type_t type, t
  * @return LEXER_RESULT_OK on success, otherwise an allocation error.
  */
 static lexer_result_t grow_indentation_stack(lexer_t *lexer) {
-	// The stack is always allocated with at least one element, so the next push is safe.
+	// For those that do not know, we check the stack capacity before growing.
 	if (lexer->indent_count + 1 < lexer->indentation_capacity) {
 		return LEXER_RESULT_OK;
 	}
@@ -337,9 +346,11 @@ static lexer_result_t skip_line_comment(lexer_t *lexer) {
  *
  * @param lexer Lexer reading the comment opening.
  * @param contains_newline Receives true if the comment contains LF.
+ * @param first_newline Receives the first LF location, or NULL if unused.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
-static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline) {
+static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline,
+                                         token_location_t *first_newline) {
 	*contains_newline = false;
 	lexer->comment_depth = 1;
 
@@ -362,6 +373,9 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline)
 		}
 
 		if (lexer->input == '\n') {
+			if (!*contains_newline && first_newline != NULL) {
+				*first_newline = (token_location_t){lexer->line, lexer->column};
+			}
 			*contains_newline = true;
 		}
 
@@ -370,8 +384,13 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline)
 			return lexer->error.code;
 		}
 
-		// Handle nested block comments, which are allowed in IFJ26.
+		// Handle nested block comments, which are allowed.
 		if (lexer->input == '/' && peek_input(lexer) == '*') {
+			if (lexer->comment_depth == SIZE_MAX) {
+				lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "block comment nesting is too deep");
+				return lexer->error.code;
+			}
+
 			result = consume_input(lexer);
 			if (result == LEXER_RESULT_OK) {
 				result = consume_input(lexer);
@@ -417,7 +436,7 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline)
  */
 static lexer_result_t finish_multiline_comment_line(lexer_t *lexer) {
 	// Skip any whitespace after the comment
-	while (lexer->input == ' ' || lexer->input == '\t' || lexer->input == '\r') {
+	while (lexer->input == ' ' || lexer->input == '\t') {
 		lexer_result_t result = consume_input(lexer);
 		if (result != LEXER_RESULT_OK) {
 			return result;
@@ -451,6 +470,12 @@ static lexer_result_t finish_multiline_comment_line(lexer_t *lexer) {
  * @return LEXER_RESULT_OK on success, otherwise a lexical error.
  */
 static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *out_token) {
+	if (lexer->indentation_widths == NULL || lexer->indentation_capacity == 0 ||
+	    lexer->indent_count >= lexer->indentation_capacity) {
+		lexer_set_error(lexer, LEXER_RESULT_INVALID_ARGUMENT, "invalid indentation state");
+		return lexer->error.code;
+	}
+
 	size_t current_width = lexer->indentation_widths[lexer->indent_count];
 	token_location_t location = {lexer->line, lexer->column};
 
@@ -468,7 +493,8 @@ static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *ou
 
 		// Push the new width onto the stack and emit an INDENT token.
 		lexer->indentation_widths[++lexer->indent_count] = width;
-		return make_layout_token(out_token, TOKEN_INDENT, location);
+		make_layout_token(out_token, TOKEN_INDENT, location);
+		return LEXER_RESULT_OK;
 	}
 
 	size_t matching_level = lexer->indent_count;
@@ -488,30 +514,38 @@ static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *ou
 	lexer->pending_dedents = lexer->indent_count - matching_level - 1;
 	lexer->indent_count = matching_level;
 
-	return make_layout_token(out_token, TOKEN_DEDENT, location);
+	make_layout_token(out_token, TOKEN_DEDENT, location);
+	return LEXER_RESULT_OK;
 }
 
 /**
- * @brief Skips ignored physical lines and reads next meaningful-line indentation.
+ * @brief Finds the first token-bearing physical line and counts its leading spaces.
  *
- * @param lexer Lexer to process.
- * @param out_token Receives a generated indentation token.
- * @param emitted Receives true if out_token was generated.
+ * Blank and comment-only lines do not affect the width. The caller decides
+ * whether the width opens a block or continues a line inside brackets.
+ *
+ * @param lexer Lexer positioned at the start of a physical line.
+ * @param width Leading spaces on the next meaningful line, or zero at EOF.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
-static lexer_result_t prepare_line_start(lexer_t *lexer, token_t *out_token, bool *emitted) {
-	size_t width = 0;
-	*emitted = false;
+static lexer_result_t read_line_prefix(lexer_t *lexer, size_t *width) {
+	*width = 0;
+	bool has_tab = false;
+	bool count_indentation = true;
 
-	/*
-     * Process physical lines until a line containing meaningful input is found.
-     * Empty lines and comment-only lines do not affect indentation.
-     */
 	for (;;) {
-
-		// Count leading spaces to determine the indentation width
-		while (lexer->input == ' ') {
-			++width;
+		while (lexer->input == ' ' || lexer->input == '\t') {
+			if (count_indentation) {
+				if (lexer->input == '\t') {
+					has_tab = true;
+				} else {
+					if (*width == SIZE_MAX) {
+						lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "indentation width is too large");
+						return lexer->error.code;
+					}
+					++*width;
+				}
+			}
 
 			lexer_result_t result = consume_input(lexer);
 			if (result != LEXER_RESULT_OK) {
@@ -519,189 +553,125 @@ static lexer_result_t prepare_line_start(lexer_t *lexer, token_t *out_token, boo
 			}
 		}
 
-		// Handle CRLF line endings as a single newline.
-		// clrf should end with lexical error
-		if (lexer->input == '\r' && peek_input(lexer) == '\n') {
+		if (lexer->input == '\r') {
+			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "carriage return is not a valid line ending");
+			return lexer->error.code;
+		}
+
+		if (lexer->input == '\n') {
 			lexer_result_t result = consume_input(lexer);
 			if (result != LEXER_RESULT_OK) {
 				return result;
 			}
-
+			*width = 0;
+			has_tab = false;
+			count_indentation = true;
 			continue;
 		}
 
-		// Tabs are not allowed for indentation in IFJ26.
-		if (lexer->input == '\t') {
+		if (lexer->input == '/' && peek_input(lexer) == '/') {
+			lexer_result_t result = skip_line_comment(lexer);
+			if (result != LEXER_RESULT_OK) {
+				return result;
+			}
+
+			if (lexer->input == '\n') {
+				result = consume_input(lexer);
+				if (result != LEXER_RESULT_OK) {
+					return result;
+				}
+			}
+			*width = 0;
+			has_tab = false;
+			count_indentation = true;
+			continue;
+		}
+
+		if (lexer->input == '/' && peek_input(lexer) == '*') {
+			bool contains_newline = false;
+			lexer_result_t result = skip_block_comment(lexer, &contains_newline, NULL);
+			if (result != LEXER_RESULT_OK) {
+				return result;
+			}
+
+			if (contains_newline) {
+				result = finish_multiline_comment_line(lexer);
+				if (result != LEXER_RESULT_OK) {
+					return result;
+				}
+				*width = 0;
+				has_tab = false;
+				count_indentation = true;
+			} else {
+				// Whitespace after a same-line comment is not leading indentation.
+				count_indentation = false;
+			}
+			continue;
+		}
+
+		// An unfinished blank line at EOF has no indentation to validate.
+		if (lexer->input == EOF) {
+			*width = 0;
+			return LEXER_RESULT_OK;
+		}
+
+		if (has_tab) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "tab used for indentation");
 			return lexer->error.code;
 		}
 
-		// If the current line is empty, then no indentation token is emitted.
-		if (lexer->input == '\n') {
-			lexer_result_t result = consume_input(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			width = 0;
-			continue;
-		}
-
-		// Skip line comments
-		if (lexer->input == '/' && peek_input(lexer) == '/') {
-			lexer_result_t result = skip_line_comment(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			if (lexer->input == '\n') {
-				result = consume_input(lexer);
-				if (result != LEXER_RESULT_OK) {
-					return result;
-				}
-			}
-
-			width = 0;
-			continue;
-		}
-
-		// Skip block comments, which may be nested and may contain newlines.
-		if (lexer->input == '/' && peek_input(lexer) == '*') {
-			bool contains_newline = false;
-			lexer_result_t result = skip_block_comment(lexer, &contains_newline);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			// If the block comment contains a newline, then finish the line and reset the indentation width.
-			if (contains_newline) {
-				result = finish_multiline_comment_line(lexer);
-				if (result != LEXER_RESULT_OK) {
-					return result;
-				}
-
-				width = 0;
-			}
-
-			continue;
-		}
-
-		// If the current line is empty, then no indentation token is emitted.
-		if (lexer->input == EOF) {
-			return LEXER_RESULT_OK;
-		}
-
-		lexer->at_line_start = false;
-		lexer->logical_line_indent = width;
-
-		lexer_result_t result = emit_indentation(lexer, width, out_token);
-		if (result != LEXER_RESULT_OK) {
-			return result;
-		}
-
-		if (out_token->type == TOKEN_INDENT || out_token->type == TOKEN_DEDENT) {
-			*emitted = true;
-		}
-
 		return LEXER_RESULT_OK;
 	}
 }
 
 /**
- * @brief Validates the indentation continuity  of a physical line in brackets.
+ * @brief Emits an indentation token when a meaningful logical line changes depth.
  *
- * Newlines inside brackets are whitespace, and not TOKEN_NEWLINE.
+ * @param lexer Lexer to process.
+ * @param out_token Receives a generated indentation token, if any.
+ * @param emitted Receives true when a token was generated.
+ * @return LEXER_RESULT_OK on success, otherwise an error code.
+ */
+static lexer_result_t prepare_line_start(lexer_t *lexer, token_t *out_token, bool *emitted) {
+	size_t width;
+	*emitted = false;
+
+	lexer_result_t result = read_line_prefix(lexer, &width);
+	if (result != LEXER_RESULT_OK || lexer->input == EOF) {
+		return result;
+	}
+
+	lexer->at_line_start = false;
+	lexer->logical_line_indent = width;
+
+	result = emit_indentation(lexer, width, out_token);
+	if (result == LEXER_RESULT_OK) {
+		*emitted = out_token->type == TOKEN_INDENT || out_token->type == TOKEN_DEDENT;
+	}
+	return result;
+}
+
+/**
+ * @brief Checks that a continuation line is indented past its logical line.
  *
- * @param lexer Lexer to use.
- * @return LEXER_RESULT_OK on success, otherwise a lexical error.
+ * @param lexer Lexer to process.
+ * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
 static lexer_result_t prepare_parenthesized_line_start(lexer_t *lexer) {
-	size_t width = 0;
-
-	// Skip leading whitespace and comments until a non-whitespace character is found.
-	for (;;) {
-		while (lexer->input == ' ') {
-			++width;
-
-			lexer_result_t result = consume_input(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-		}
-
-		if (lexer->input == '\r' && peek_input(lexer) == '\n') {
-			lexer_result_t result = consume_input(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			continue;
-		}
-
-		if (lexer->input == '\t') {
-			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "tab used for continuation indentation");
-			return lexer->error.code;
-		}
-
-		if (lexer->input == '\n') {
-			lexer_result_t result = consume_input(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			width = 0;
-			continue;
-		}
-
-		if (lexer->input == '/' && peek_input(lexer) == '/') {
-			lexer_result_t result = skip_line_comment(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			if (lexer->input == '\n') {
-				result = consume_input(lexer);
-				if (result != LEXER_RESULT_OK) {
-					return result;
-				}
-			}
-
-			width = 0;
-			continue;
-		}
-
-		if (lexer->input == '/' && peek_input(lexer) == '*') {
-			bool contains_newline = false;
-			lexer_result_t result = skip_block_comment(lexer, &contains_newline);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			if (contains_newline) {
-				result = finish_multiline_comment_line(lexer);
-				if (result != LEXER_RESULT_OK) {
-					return result;
-				}
-
-				width = 0;
-			}
-
-			continue;
-		}
-
-		if (lexer->input == EOF) {
-			return LEXER_RESULT_OK;
-		}
-
-		if (width <= lexer->logical_line_indent) {
-			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR,
-			                "continuation line is not indented beyond its logical line");
-			return lexer->error.code;
-		}
-
-		lexer->at_line_start = false;
-		return LEXER_RESULT_OK;
+	size_t width;
+	lexer_result_t result = read_line_prefix(lexer, &width);
+	if (result != LEXER_RESULT_OK || lexer->input == EOF) {
+		return result;
 	}
+
+	if (width <= lexer->logical_line_indent) {
+		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR,
+		                "continuation line is not indented beyond its logical line");
+		return lexer->error.code;
+	}
+
+	lexer->at_line_start = false;
+	return LEXER_RESULT_OK;
 }
 
 /**
@@ -728,11 +698,12 @@ static lexer_result_t scan_identifier(lexer_t *lexer, token_t *out_token) {
 	                        ? TOKEN_WILDCARD
 	                        : lexer_keyword_type(builder.data, builder.length);
 
-	return make_token(out_token, type, location, &builder);
+	make_token(out_token, type, location, &builder);
+	return LEXER_RESULT_OK;
 }
 
 /**
- * @brief Scans digits separated only by valid underscore separators.
+ * @brief Scans digits with optional runs of underscores between digits.
  *
  * @param lexer Lexer to use.
  * @param builder Builder receiving source text.
@@ -740,27 +711,56 @@ static lexer_result_t scan_identifier(lexer_t *lexer, token_t *out_token) {
  * @return LEXER_RESULT_OK on success, otherwise a lexical error.
  */
 static lexer_result_t scan_digit_sequence(lexer_t *lexer, text_builder_t *builder, bool *has_digits) {
-	bool previous_was_digit = false;
+	bool ends_with_underscore = false;
 	*has_digits = false;
 
-	// Consume digits and underscores, validating that underscores are not at the start, end, or adjacent to other underscores.
+	// A run of underscores is valid only after a digit and before another digit.
 	while (is_digit(lexer->input) || lexer->input == '_') {
 		if (lexer->input == '_') {
-			if (!previous_was_digit || !is_digit(peek_input(lexer))) {
+			if (!*has_digits) {
 				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "invalid underscore in number");
 				return lexer->error.code;
 			}
 
-			previous_was_digit = false;
+			ends_with_underscore = true;
 		} else {
 			*has_digits = true;
-			previous_was_digit = true;
+			ends_with_underscore = false;
 		}
 
 		lexer_result_t result = take_input(lexer, builder);
 		if (result != LEXER_RESULT_OK) {
 			return result;
 		}
+	}
+
+	if (ends_with_underscore) {
+		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "invalid underscore in number");
+		return lexer->error.code;
+	}
+
+	return LEXER_RESULT_OK;
+}
+
+/**
+ * @brief Scans a mandatory digit sequence in a number component.
+ *
+ * @param lexer Lexer to use.
+ * @param builder Builder receiving the source text.
+ * @param missing_message Diagnostic if no digit follows.
+ * @return LEXER_RESULT_OK on success, otherwise an error code.
+ */
+static lexer_result_t scan_required_digits(lexer_t *lexer, text_builder_t *builder,
+                                           const char *missing_message) {
+	bool has_digits = false;
+	lexer_result_t result = scan_digit_sequence(lexer, builder, &has_digits);
+	if (result != LEXER_RESULT_OK) {
+		return result;
+	}
+
+	if (!has_digits) {
+		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, missing_message);
+		return lexer->error.code;
 	}
 
 	return LEXER_RESULT_OK;
@@ -776,119 +776,157 @@ static lexer_result_t scan_digit_sequence(lexer_t *lexer, text_builder_t *builde
 static lexer_result_t scan_number(lexer_t *lexer, token_t *out_token) {
 	token_location_t location = {lexer->line, lexer->column};
 	text_builder_t builder = {0};
-	bool has_digits = false;
+	lexer_result_t result;
 	bool has_fraction = false;
 	bool has_exponent = false;
 	bool has_double_suffix = false;
 
-	if (lexer->input == '.') {
-		has_fraction = true;
-
-		lexer_result_t result = take_input(lexer, &builder);
-		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
-		}
-
-		// A decimal fraction must have at least one digit after the decimal point.
-		result = scan_digit_sequence(lexer, &builder, &has_digits);
-		if (result != LEXER_RESULT_OK || !has_digits) {
-			if (result == LEXER_RESULT_OK) {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "missing decimal fraction");
-			}
-
-			builder_destroy(&builder);
-			return lexer->error.code;
-		}
-	} else {
+	// The integer part is optional only when the literal starts with a dot.
+	if (lexer->input != '.') {
 		int first_digit = lexer->input;
-
-		lexer_result_t result = scan_digit_sequence(lexer, &builder, &has_digits);
+		result = scan_required_digits(lexer, &builder, "missing integer digits");
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
 
-		// A nonzero number cannot start with a leading zero.
+		// Keep the original leading-zero rule for the integer part.
 		if (first_digit == '0' && builder.length > 1) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "nonzero number starts with zero");
-			builder_destroy(&builder);
-			return lexer->error.code;
+			result = lexer->error.code;
+			goto cleanup;
 		}
 	}
 
-	// If a decimal point is present, then a decimal fraction must follow.
+	// A dot always starts a nonempty fractional part.
 	if (lexer->input == '.') {
 		has_fraction = true;
-
-		lexer_result_t result = take_input(lexer, &builder);
+		result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
 
-		// A decimal fraction must have at least one digit after the decimal point.
-		bool fraction_digits = false;
-		result = scan_digit_sequence(lexer, &builder, &fraction_digits);
-		if (result != LEXER_RESULT_OK || !fraction_digits) {
-			if (result == LEXER_RESULT_OK) {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "missing decimal fraction");
-			}
-
-			builder_destroy(&builder);
-			return lexer->error.code;
+		result = scan_required_digits(lexer, &builder, "missing decimal fraction");
+		if (result != LEXER_RESULT_OK) {
+			goto cleanup;
 		}
 	}
 
-	// If an exponent is present, then it must be followed by an optional sign and at least one digit.
+	// Exponents have an optional sign followed by at least one digit.
 	if (lexer->input == 'e' || lexer->input == 'E') {
 		has_exponent = true;
-
-		lexer_result_t result = take_input(lexer, &builder);
+		result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
 
 		if (lexer->input == '+' || lexer->input == '-') {
 			result = take_input(lexer, &builder);
 			if (result != LEXER_RESULT_OK) {
-				builder_destroy(&builder);
-				return result;
+				goto cleanup;
 			}
 		}
 
-		bool exponent_digits = false;
-		result = scan_digit_sequence(lexer, &builder, &exponent_digits);
-		if (result != LEXER_RESULT_OK || !exponent_digits) {
-			if (result == LEXER_RESULT_OK) {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "missing exponent digits");
-			}
-
-			builder_destroy(&builder);
-			return lexer->error.code;
+		result = scan_required_digits(lexer, &builder, "missing exponent digits");
+		if (result != LEXER_RESULT_OK) {
+			goto cleanup;
 		}
 	}
 
-	// If a double suffix is present, then it must be the last character of the number.
+	// A d/D suffix also turns an integer-shaped spelling into a Double.
 	if (lexer->input == 'd' || lexer->input == 'D') {
 		has_double_suffix = true;
-
-		lexer_result_t result = take_input(lexer, &builder);
+		result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
 	}
 
 	if (is_identifier_part(lexer->input)) {
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "identifier immediately follows number");
-		builder_destroy(&builder);
-		return lexer->error.code;
+		result = lexer->error.code;
+		goto cleanup;
 	}
 
 	token_type_t type = has_fraction || has_exponent || has_double_suffix ? TOKEN_DOUBLE : TOKEN_INTEGER;
-	return make_token(out_token, type, location, &builder);
+	make_token(out_token, type, location, &builder);
+	return LEXER_RESULT_OK;
+
+cleanup:
+	builder_destroy(&builder);
+	return result;
+}
+
+/**
+ * @brief Reads an ordinary string after its opening quote.
+ *
+ * @param lexer Lexer positioned at the first body character.
+ * @param builder Receives the exact source spelling.
+ * @return LEXER_RESULT_OK after the closing quote, otherwise an error code.
+ */
+static lexer_result_t scan_ordinary_string_body(lexer_t *lexer, text_builder_t *builder) {
+	while (lexer->input != EOF && lexer->input != '"' && lexer->input != '\n' && lexer->input != '\r') {
+		if (lexer->input == '\\') {
+			lexer_result_t result = take_input(lexer, builder);
+			if (result != LEXER_RESULT_OK) {
+				return result;
+			}
+
+			// Only the five IFJ26 escape sequences are accepted.
+			if (lexer->input != '\\' && lexer->input != '"' && lexer->input != 'n' && lexer->input != 'r' &&
+			    lexer->input != 't') {
+				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "invalid string escape");
+				return lexer->error.code;
+			}
+		}
+
+		if (lexer->input > 127) {
+			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
+			return lexer->error.code;
+		}
+
+		lexer_result_t result = take_input(lexer, builder);
+		if (result != LEXER_RESULT_OK) {
+			return result;
+		}
+	}
+
+	if (lexer->input != '"') {
+		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unterminated string");
+		return lexer->error.code;
+	}
+
+	return take_input(lexer, builder);
+}
+
+/**
+ * @brief Reads a raw multiline string after its opening triple quote.
+ *
+ * @param lexer Lexer positioned at the first body character.
+ * @param builder Receives the exact source spelling.
+ * @return LEXER_RESULT_OK after three closing quotes, otherwise an error code.
+ */
+static lexer_result_t scan_multiline_string_body(lexer_t *lexer, text_builder_t *builder) {
+	size_t quote_count = 0;
+
+	while (lexer->input != EOF) {
+		if (lexer->input > 127) {
+			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
+			return lexer->error.code;
+		}
+
+		quote_count = lexer->input == '"' ? quote_count + 1 : 0;
+		lexer_result_t result = take_input(lexer, builder);
+		if (result != LEXER_RESULT_OK) {
+			return result;
+		}
+
+		if (quote_count == 3) {
+			return LEXER_RESULT_OK;
+		}
+	}
+
+	lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unterminated multiline string");
+	return lexer->error.code;
 }
 
 /**
@@ -896,102 +934,43 @@ static lexer_result_t scan_number(lexer_t *lexer, token_t *out_token) {
  *
  * @param lexer Lexer at an opening quote.
  * @param out_token Receives the recognized token.
- * @return LEXER_RESULT_OK on success, otherwise a lexical error.
+ * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
 static lexer_result_t scan_string(lexer_t *lexer, token_t *out_token) {
 	token_location_t location = {lexer->line, lexer->column};
 	text_builder_t builder = {0};
 	lexer_result_t result = take_input(lexer, &builder);
 	if (result != LEXER_RESULT_OK) {
-		builder_destroy(&builder);
-		return result;
+		goto cleanup;
 	}
 
 	bool multiline = lexer->input == '"' && peek_input(lexer) == '"';
-
 	if (multiline) {
-		result = take_input(lexer, &builder);
-		if (result == LEXER_RESULT_OK) {
-			result = take_input(lexer, &builder);
-		}
-
-		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
-		}
-
-		size_t quote_count = 0;
-
-		// Consume characters until the closing triple quotes are found.
-		while (lexer->input != EOF) {
-			if (lexer->input > 127) {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
-				builder_destroy(&builder);
-				return lexer->error.code;
-			}
-
-			quote_count = lexer->input == '"' ? quote_count + 1 : 0;
-
-			result = take_input(lexer, &builder);
-			if (result != LEXER_RESULT_OK) {
-				builder_destroy(&builder);
-				return result;
-			}
-
-			if (quote_count == 3) {
-				return make_token(out_token, TOKEN_MULTILINE_STRING, location, &builder);
-			}
-		}
-
-		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unterminated multiline string");
-		builder_destroy(&builder);
-		return lexer->error.code;
-	}
-
-	while (lexer->input != EOF && lexer->input != '"' && lexer->input != '\n') {
-		if (lexer->input == '\\') {
-			result = take_input(lexer, &builder);
-			if (result != LEXER_RESULT_OK) {
-				builder_destroy(&builder);
-				return result;
-			}
-
-			// Validate that the escape sequence is one of the allowed characters.
-			if (lexer->input != '\\' && lexer->input != '"' && lexer->input != 'n' && lexer->input != 'r' &&
-			    lexer->input != 't') {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "invalid string escape");
-				builder_destroy(&builder);
-				return lexer->error.code;
-			}
-		}
-
-		if (lexer->input > 127) {
-			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
-			builder_destroy(&builder);
-			return lexer->error.code;
-		}
-
+		// The first opening quote was already consumed.
 		result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
+		result = take_input(lexer, &builder);
+		if (result != LEXER_RESULT_OK) {
+			goto cleanup;
+		}
+
+		result = scan_multiline_string_body(lexer, &builder);
+	} else {
+		result = scan_ordinary_string_body(lexer, &builder);
 	}
 
-	// If the string was not terminated by a closing quote, report an error.
-	if (lexer->input != '"') {
-		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unterminated string");
-		builder_destroy(&builder);
-		return lexer->error.code;
-	}
-
-	result = take_input(lexer, &builder);
 	if (result != LEXER_RESULT_OK) {
-		builder_destroy(&builder);
-		return result;
+		goto cleanup;
 	}
 
-	return make_token(out_token, TOKEN_STRING, location, &builder);
+	make_token(out_token, multiline ? TOKEN_MULTILINE_STRING : TOKEN_STRING, location, &builder);
+	return LEXER_RESULT_OK;
+
+cleanup:
+	builder_destroy(&builder);
+	return result;
 }
 
 /**
@@ -1005,30 +984,35 @@ static lexer_result_t scan_main_declaration(lexer_t *lexer, token_t *out_token) 
 	static const char ANNOTATION[] = "@main";
 	token_location_t location = {lexer->line, lexer->column};
 	text_builder_t builder = {0};
+	lexer_result_t result;
 
 	// Consume the characters of the annotation and validate that they match.
 	for (size_t index = 0; ANNOTATION[index] != '\0'; ++index) {
 		if (lexer->input != ANNOTATION[index]) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unknown annotation");
-			builder_destroy(&builder);
-			return lexer->error.code;
+			result = lexer->error.code;
+			goto cleanup;
 		}
 
-		lexer_result_t result = take_input(lexer, &builder);
+		result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
-			builder_destroy(&builder);
-			return result;
+			goto cleanup;
 		}
 	}
 
 	// Check that the annotation is not followed by an identifier character. E.g., "@mainx"
 	if (is_identifier_part(lexer->input)) {
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unknown annotation");
-		builder_destroy(&builder);
-		return lexer->error.code;
+		result = lexer->error.code;
+		goto cleanup;
 	}
 
-	return make_token(out_token, TOKEN_MAIN_ANNOTATION, location, &builder);
+	make_token(out_token, TOKEN_MAIN_ANNOTATION, location, &builder);
+	return LEXER_RESULT_OK;
+
+cleanup:
+	builder_destroy(&builder);
+	return result;
 }
 
 /**
@@ -1036,13 +1020,19 @@ static lexer_result_t scan_main_declaration(lexer_t *lexer, token_t *out_token) 
  *
  * @param lexer Lexer to use
  * @param type Newly recognized delimiter.
+ * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
-static void update_parenthesis_depth(lexer_t *lexer, token_type_t type) {
+static lexer_result_t update_parenthesis_depth(lexer_t *lexer, token_type_t type) {
 	if (type == TOKEN_LPAREN || type == TOKEN_LBRACKET) {
+		if (lexer->parenthesis_depth == SIZE_MAX) {
+			lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "parenthesis nesting is too deep");
+			return lexer->error.code;
+		}
 		++lexer->parenthesis_depth;
 	} else if ((type == TOKEN_RPAREN || type == TOKEN_RBRACKET) && lexer->parenthesis_depth != 0) {
 		--lexer->parenthesis_depth;
 	}
+	return LEXER_RESULT_OK;
 }
 
 /**
@@ -1061,8 +1051,7 @@ static lexer_result_t scan_symbol(lexer_t *lexer, token_t *out_token) {
 	// Consume the first character of the symbol and append it to the builder.
 	lexer_result_t result = take_input(lexer, &builder);
 	if (result != LEXER_RESULT_OK) {
-		builder_destroy(&builder);
-		return result;
+		goto cleanup;
 	}
 
 	switch (first) {
@@ -1116,8 +1105,8 @@ static lexer_result_t scan_symbol(lexer_t *lexer, token_t *out_token) {
 	case '&':
 		if (lexer->input != '&') {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "expected second ampersand");
-			builder_destroy(&builder);
-			return lexer->error.code;
+			result = lexer->error.code;
+			goto cleanup;
 		}
 		result = take_input(lexer, &builder);
 		type = TOKEN_AND;
@@ -1158,17 +1147,24 @@ static lexer_result_t scan_symbol(lexer_t *lexer, token_t *out_token) {
 		break;
 	default:
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unknown input character");
-		builder_destroy(&builder);
-		return lexer->error.code;
+		result = lexer->error.code;
+		goto cleanup;
 	}
 
 	if (result != LEXER_RESULT_OK) {
-		builder_destroy(&builder);
-		return result;
+		goto cleanup;
 	}
 
-	update_parenthesis_depth(lexer, type);
-	return make_token(out_token, type, location, &builder);
+	result = update_parenthesis_depth(lexer, type);
+	if (result != LEXER_RESULT_OK) {
+		goto cleanup;
+	}
+	make_token(out_token, type, location, &builder);
+	return LEXER_RESULT_OK;
+
+cleanup:
+	builder_destroy(&builder);
+	return result;
 }
 
 /**
@@ -1180,7 +1176,13 @@ static lexer_result_t scan_symbol(lexer_t *lexer, token_t *out_token) {
  */
 lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 	if (lexer == NULL || out_token == NULL) {
-		return LEXER_RESULT_IO_ERROR;
+		return LEXER_RESULT_INVALID_ARGUMENT;
+	}
+	if (lexer->source == NULL || lexer->indentation_widths == NULL || lexer->indentation_capacity == 0 ||
+	    lexer->indent_count >= lexer->indentation_capacity || lexer->indentation_widths[0] != 0 ||
+	    lexer->pending_dedents >= lexer->indentation_capacity) {
+		lexer_set_error(lexer, LEXER_RESULT_INVALID_ARGUMENT, "invalid lexer state");
+		return lexer->error.code;
 	}
 
 	// Shall we clear thy output token before scanning?
@@ -1190,7 +1192,8 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 		// If there are pending DEDENT tokens, emit them first.
 		if (lexer->pending_dedents != 0) {
 			--lexer->pending_dedents;
-			return make_layout_token(out_token, TOKEN_DEDENT, (token_location_t){lexer->line, lexer->column});
+			make_layout_token(out_token, TOKEN_DEDENT, (token_location_t){lexer->line, lexer->column});
+			return LEXER_RESULT_OK;
 		}
 
 		if (lexer->input == EOF) {
@@ -1203,14 +1206,17 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 			if (lexer->indent_count != 0) {
 				lexer->pending_dedents = lexer->indent_count - 1;
 				lexer->indent_count = 0;
-				return make_layout_token(out_token, TOKEN_DEDENT,
-				                         (token_location_t){lexer->line, lexer->column});
+				make_layout_token(out_token, TOKEN_DEDENT, (token_location_t){lexer->line, lexer->column});
+				return LEXER_RESULT_OK;
 			}
 
-			return make_layout_token(out_token, TOKEN_EOF, (token_location_t){lexer->line, lexer->column});
+			make_layout_token(out_token, TOKEN_EOF, (token_location_t){lexer->line, lexer->column});
+			return LEXER_RESULT_OK;
 		}
 
 		// Validate that the input character is ASCII.
+		// why not use is_ascii_letter() ?
+		// ehm, that checks only letters :3 te-hee
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
@@ -1255,19 +1261,9 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 			continue;
 		}
 
-		// Handle CRLF line endings as a single newline.
 		if (lexer->input == '\r') {
-			if (peek_input(lexer) != '\n') {
-				lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "bare carriage return in source");
-				return lexer->error.code;
-			}
-
-			lexer_result_t result = consume_input(lexer);
-			if (result != LEXER_RESULT_OK) {
-				return result;
-			}
-
-			continue;
+			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "carriage return is not a valid line ending");
+			return lexer->error.code;
 		}
 
 		// If the current line is empty, then no indentation token is emitted.
@@ -1285,7 +1281,8 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 				continue;
 			}
 
-			return make_layout_token(out_token, TOKEN_NEWLINE, location);
+			make_layout_token(out_token, TOKEN_NEWLINE, location);
+			return LEXER_RESULT_OK;
 		}
 
 		// Skip line comments
@@ -1301,7 +1298,8 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 		// Skip block comments, which may be nested and may contain newlines.
 		if (lexer->input == '/' && peek_input(lexer) == '*') {
 			bool contains_newline = false;
-			lexer_result_t result = skip_block_comment(lexer, &contains_newline);
+			token_location_t first_newline = {0};
+			lexer_result_t result = skip_block_comment(lexer, &contains_newline, &first_newline);
 			if (result != LEXER_RESULT_OK) {
 				return result;
 			}
@@ -1321,8 +1319,8 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 				continue;
 			}
 
-			return make_layout_token(out_token, TOKEN_NEWLINE,
-			                         (token_location_t){lexer->line, lexer->column});
+			make_layout_token(out_token, TOKEN_NEWLINE, first_newline);
+			return LEXER_RESULT_OK;
 		}
 
 		lexer_result_t result;
