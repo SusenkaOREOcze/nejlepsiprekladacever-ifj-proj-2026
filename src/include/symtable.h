@@ -12,36 +12,14 @@
 #ifndef SYMTABLE_H
 #define SYMTABLE_H
 
+#include "symtable_shared.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
 /*==========
   DATA TYPES
   ==========*/
-
-/**
-   A set of status codes pertinent to the symbol table data structure.
-
-   You're an excellent programmer, so you'll probably only need the first code from this list.
-*/
-typedef enum SymtableStatusCode {
-	SYMTSTAT_OK = 0,
-	SYMTSTAT_BAD_ARG,
-	SYMTSTAT_BAD_ALLOC,
-	SYMTSTAT_NO_SYMBOL,
-	SYMTSTAT_NO_SCOPE,
-} symt_stat_t;
-
-/**
-   Identifies what kind of data a symbol shall hold.
-*/
-typedef enum SymtableDataType {
-	SYMT_TYPE_UNIT,
-	SYMT_TYPE_INTEGER,
-	SYMT_TYPE_DOUBLE,
-	SYMT_TYPE_STRING,
-	SYMT_TYPE_BOOLEAN,
-} symt_data_type_t;
 
 /**
    A symbol from the symbol table. How symbolic.
