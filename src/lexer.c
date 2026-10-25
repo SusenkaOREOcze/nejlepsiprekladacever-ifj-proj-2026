@@ -47,7 +47,7 @@ void lexer_set_error(lexer_t *lexer, lexer_result_t code, const char *message) {
 
 lexer_result_t lexer_init(lexer_t *lexer, FILE *source) {
 	if (lexer == NULL || source == NULL) {
-		return LEXER_RESULT_IO_ERROR;
+		return LEXER_RESULT_INVALID_ARGUMENT;
 	}
 
 	*lexer = (lexer_t){0}; // 0 out the lexer
@@ -118,7 +118,7 @@ const token_t *lexer_next(const lexer_t *lexer) {
 
 lexer_result_t lexer_advance(lexer_t *lexer) {
 	if (lexer == NULL || lexer->error.code != LEXER_RESULT_OK) {
-		return lexer == NULL ? LEXER_RESULT_IO_ERROR : lexer->error.code;
+		return lexer == NULL ? LEXER_RESULT_INVALID_ARGUMENT : lexer->error.code;
 	}
 
 	lexer_token_destroy(&lexer->current_token);

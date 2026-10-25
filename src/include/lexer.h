@@ -24,7 +24,8 @@ typedef enum LexerResult {
 	LEXER_RESULT_OK,
 	LEXER_RESULT_LEXICAL_ERROR,
 	LEXER_RESULT_MEMORY_ERROR,
-	LEXER_RESULT_IO_ERROR
+	LEXER_RESULT_IO_ERROR,
+	LEXER_RESULT_INVALID_ARGUMENT
 } lexer_result_t;
 
 /**
@@ -43,21 +44,30 @@ typedef struct LexerError {
  */
 typedef struct Lexer {
 	FILE *source;
-	int input; // Current input character, or EOF.
+	int input; // Current input character.
 
 	size_t line;
 	size_t column;
 	bool at_line_start;
 
-	/**
-	 * @brief Indentation tracking.
+	 /**
+	 * @brief Indentation and nesting tracking
 	 *
-	 * indettation is tracked as a stack of indentation widths.
-	 * Each time a new line is started, the lexer compares the current line's indentation width to the top of
-	 * the stack. If the current line's indentation is greater than the top of the stack, it pushes the new
-	 * width onto the stack and produces an INDENT token. If it is less, it pops widths from the stack until
-	 * it finds a matching width or reaches the bottom of the stack, producing DEDENT tokens for each pop. If
-	 * no matching width is found, it reports an indentation error.
+	 * - indent count is the current depth of the indentation; index 0 is the base level
+	 * - parenthesis depth is the combined nesting depth of parentheses and brackets - lexer doesnt care if it is () [] [) (]
+	 * - comment depth is the current depth of nested block comments
+	 * - indentation widths is a array of the indentation widths.
+	 * 		- that is, array where each element is the number of spaces at the start of a line, for each indentation level eg. [0, 4, 8]
+	 * - indentation capacity is the number of widths the array can hold, including the base level
+	 * 		- eg. 3 in the example above
+	 * - pending dedents is the number of DEDENT tokens remaining after the first one was emitted
+	 * - logical line indent is the indentation width of the current logical line, used to check
+	 *   continuation lines inside parentheses and brackets
+	 *
+	 * When indentation increases, we push its width and emit an INDENT token.
+	 * When indentation decreases, we emit DEDENT tokens until the previous indentation level is reached.
+	 * Newlines inside parentheses or brackets are treated as continuation lines and do not reset the parenthesis depth.
+	 * Block comment depth increases and decreases while ...lexing nested comments.
 	 */
 	size_t indent_count;
 	size_t parenthesis_depth;
