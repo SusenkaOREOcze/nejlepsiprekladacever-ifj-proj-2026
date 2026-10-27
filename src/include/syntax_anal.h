@@ -1,6 +1,18 @@
 #ifndef IFJ_SYNTAX_ANAL_H
 #define IFJ_SYNTAX_ANAL_H
 
+/**
+ * @file syntax_anal.h
+ * @author xkohela00
+ * @date 2026-11-25
+ * @brief syntax analyser interface for IFJ26
+ *
+ * definitions and statements go through recursive descent,
+ * expressions go through the precedence table parser
+ * semantic analyser isnt hooked up yet, comments in syntax_anal.c say
+ * where syntax_semantic_action would get called
+ */
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -8,12 +20,18 @@
 
 /** Parser state shared by the recursive-descent routines. */
 typedef struct SyntaxParser {
-	lexer_t *lexer;
+	lexer_t *lexer; // lexer that gives us the current and next token
 	/** Set after a syntax or lexer failure; parsing then stops. */
 	bool failed;
+
+	// set together with failed when the parser itself runs out of memory, exit code 99
+	// so main can tell it apart from a syntax error 2 or a lexer error, see lexer_error
+	bool internal_error;
 } syntax_parser_t;
 
-/** Events the parser sends to the semantic analyzer as constructs are recognized. */
+/**
+ * @brief events the parser would send to the semantic analyser when it recognizes something
+ */
 typedef enum SyntaxSemanticAction {
 	SEMANTIC_ACTION_PRIMARY,
 	SEMANTIC_ACTION_UNIT,
@@ -41,10 +59,27 @@ typedef enum SyntaxSemanticAction {
 } syntax_semantic_action_t;
 
 /**
- * Placeholder for the semantic analyzer's action dispatcher. It is called
- * synchronously. The token is borrowed and must be copied if it is needed
- * later. Operator and call tokens carry their type and location; item_count
- * carries the argument count for SEMANTIC_ACTION_CALL.
+ * @brief placeholder for the semantic analyser dispatcher
+ *
+ * parser doesnt call it yet, look for the semantic analyser comments in syntax_anal.c
+ *
+ * gets called synchronously, token is borrowed so copy it if you need it later
+ * operator and call tokens only have type and location
+ *
+ * expression actions come in postfix order, so f of 1 plus x dot length gives
+ * PRIMARY f, PRIMARY 1, CALL with 1 arg, PRIMARY x, MEMBER length, BINARY plus
+ *
+ * extension stuff
+ * List used as a value for LISTS comes as PRIMARY with a TOKEN_TYPE_LIST token
+ * ranges with to until and by for CONTROL and LISTS come as BINARY,
+ * token type is TOKEN_IDENTIFIER and the lexeme is to, until or by
+ * List type comes as TYPE List and right after it the TYPE actions of the element type
+ * nested if expression inside an expression for CONTROL gives the condition,
+ * then value and else value and after that SEMANTIC_ACTION_IF
+ *
+ * @param action what was recognized
+ * @param token token of it, NULL if there isnt one
+ * @param item_count argument count for SEMANTIC_ACTION_CALL, 0 otherwise
  */
 void syntax_semantic_action(syntax_semantic_action_t action, const token_t *token, size_t item_count);
 
