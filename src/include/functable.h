@@ -4,12 +4,6 @@
    @date 2026-10-25
 
    @brief Public interface for the functable module.
-
-   Why is this not a part of the symtable.c module?
-   1. Nobody told us that we can't do it like this, and clearly, what's not forbidden is allowed,
-   2. The function table is different enough from the symbol table that this separation felt logical to us.
-   Also to follow up on the question from @ref "symtable.h": this is the actual reason why hashtable is its
-   own module.
 */
 
 #ifndef FUNCTABLE_H
@@ -30,16 +24,16 @@
    Slightly more involved, but do not be afraid, the code doesn't bite... not physically anyway.
 */
 typedef struct FunctableSymbol {
-    symt_data_type_t ret_type;
-    size_t param_count;
-    int8_t *def_param_type_array;
-    int8_t *call_param_type_array;
-} funct_symbol_t;
+	symt_data_type_t ret_type;
+	size_t param_count;
+	int8_t *def_param_type_array;
+	int8_t *call_param_type_array;
+} funct_symbol_t; // sizeof(funct_symbol_t) = 24
 
 /**
-   The function table type. Analogous to the symt_t type, but actually simpler :-].
+   The function table type. Analogous to the symt_t type, but actually simpler :-).
 
-   @note Once again, this structure has state initialized by @ref funct_init, so deal with it accordingly.
+   @note This structure has state initialized by @ref funct_init, so deal with it accordingly.
 */
 typedef struct Functable funct_t;
 
@@ -58,7 +52,8 @@ typedef struct Functable funct_t;
 symt_stat_t funct_init(funct_t **const func_table);
 
 /**
-   Destroy any signs that a function table existed in memory.
+   Destroy any signs that a function table existed in memory. This is safe to call when
+   @ref funct_pending_insert is truee.
 
    @param func_table The function table to free from memory.
    @returns SYMTSTAT_OK on success, or an error.
@@ -69,31 +64,31 @@ symt_stat_t funct_free(funct_t *func_table);
    Begin inserting a new function identifier into a function table.
 
    @param table The table into which to insert.
-   @param ident The to-be-added function's identifier.
-   @param ret The function's return type.
-   @param is_def Specifies if the inserted symbol is a function call or a function definition.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if an insertion is already pending, SYMTSTAT_BAD_ARG if
-   the given symbol already exists, or an error.
+   @param ident The to-be-added function's identifier. The symbol is not actually inserted yet.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if an insertion is already pending, or an
+   error. Additionally, if a symbol with 'ident' already exists, returns SYMTSTAT_BAD_ARG.
 */
-symt_stat_t funct_insert_begin(funct_t *table, const char *ident, const symt_data_type_t ret,
-                               const bool is_def);
+symt_stat_t funct_insert_begin(funct_t *table, const char *ident);
 
 /**
    Add a parameter type to the currently inserted function. See @ref funct_insert_begin.
 
    @param table The table in which to work.
    @param param_type The type of the inserted function's parameter.
+   @param is_def Specifies if the inserted symbol is a function call or a function definition.
    @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, or an error.
 */
-symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type);
+symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type, const bool is_def);
 
 /**
    Finish inserting a function symbol (and leave the insertion state).
 
    @param table The table on which to operate.
+   @param ident The function's identifier. Must match the ident used when calling @ref funct_insert_begin.
+   @param ret The function's return type.
    @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, or an error.
 */
-symt_stat_t funct_insert_end(funct_t *table);
+symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret);
 
 /**
    A predicate to test if a symbol insertion is currently in progress.
@@ -128,9 +123,11 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 
    @param func_symbol A specific function symbol, as returned by one of the find functions.
    @param param_number The index of the function's parameter, from left to right, beginning at 0.
-   @returns The data type of a parameter (see @ref symt_data_type_t). On failure, returns SYMT_TYPE_UNDEFINED.
+   @param[out] out_type The variable into which to store the parameter type.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_FUNC_NO_PARAMS if the symbol has no parameters, or an error.
 */
-symt_data_type_t funct_nth_param_type(const funct_symbol_t *func_symbol, const size_t param_number);
+symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const size_t param_number,
+                                 symt_data_type_t *out_type);
 
 /* When the compiler is suspicious */
 extern inline bool funct_pending_insert(const funct_t *table);
