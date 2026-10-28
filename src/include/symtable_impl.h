@@ -34,7 +34,7 @@ typedef struct SymtableScope {
    The table of symbols (or should I say symbol scopes?).
 */
 struct Symtable {
-	symt_scope_t *scope_top;   //!< This is simultaneously the current scope.
+	symt_scope_t *scope_top; //!< This is simultaneously the current scope.
 	symt_scope_t *standby_top;
 	size_t scope_depth;
 	unsigned long long uid_accum;
@@ -44,7 +44,7 @@ struct Symtable {
   FUNCTIONS
   =========*/
 
-#ifndef TEST_SYMTABLE
+#ifndef UNIT_UNDER_TEST
 /**
    Erase the contents of a given scope.
 
@@ -92,6 +92,6 @@ extern inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_s
 extern inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope);
 extern inline void symt_free_scope(symt_scope_t *scope);
 
-#endif /* TEST_SYMTABLE not defined */
+#endif /* UNIT_UNDER_TEST not defined */
 
 #endif /* symtable.h included */

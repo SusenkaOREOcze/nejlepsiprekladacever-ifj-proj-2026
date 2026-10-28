@@ -25,7 +25,7 @@ symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size
 		return SYMTSTAT_BAD_ALLOC;
 
 	/* Allocate the hashtable of that scope */
-	if (htbl_init(new_scope->scope, scope_size) != HTBLSTAT_OK) {
+	if (HTBL_INIT(new_scope->scope, scope_size) != HTBLSTAT_OK) {
 		free(new_scope);
 		return SYMTSTAT_BAD_ALLOC;
 	}
@@ -59,7 +59,7 @@ inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t *
 inline void symt_free_scope(symt_scope_t *scope) {
 	if (scope == NULL)
 		return;
-	htbl_free(scope->scope);
+	HTBL_FREE(scope->scope);
 	free(scope);
 }
 
@@ -67,7 +67,7 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope) {
 	if (scope == NULL)
 		return SYMTSTAT_BAD_ARG;
 
-	htbl_clear(scope->scope);
+	HTBL_CLEAR(scope->scope);
 	return SYMTSTAT_OK;
 }
 
@@ -82,7 +82,7 @@ symt_stat_t symt_init(symt_t **const sym_table) {
 	symt_t *new_table = malloc(sizeof(symt_t));
 	if (new_table == NULL)
 		return SYMTSTAT_BAD_ALLOC;
-	
+
 	/* Initialize an empty symbol table */
 	new_table->scope_top = NULL;
 	new_table->standby_top = NULL;
@@ -131,6 +131,7 @@ FAIL_ALLOC:
 		symt_free_scope(new_table->scope_top);
 		new_table->scope_top = NULL;
 	}
+	free(new_table);
 	return result;
 }
 
@@ -228,7 +229,7 @@ symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *sym
 	symbol->uid = sym_table->uid_accum;
 	sym_table->uid_accum++;
 
-	if (htbl_insert(cur_scope->scope, ident, symbol) != HTBLSTAT_OK)
+	if (HTBL_INSERT(cur_scope->scope, ident, symbol) != HTBLSTAT_OK)
 		return SYMTSTAT_BAD_ALLOC;
 
 	return SYMTSTAT_OK;
@@ -242,10 +243,10 @@ symt_stat_t symt_find_symbol(symt_t *sym_table, const char *ident, symt_symbol_t
 
 	/* Iterate through the global scope stack, starting at the current depth */
 	while (aux_scope_top != NULL) {
-	    if (htbl_retrieve(aux_scope_top->scope, ident, *out_symbol))
-		break;
+		if (HTBL_RETRIEVE(aux_scope_top->scope, ident, *out_symbol))
+			break;
 
-	    aux_scope_top = aux_scope_top->prev;
+		aux_scope_top = aux_scope_top->prev;
 	}
 	return aux_scope_top == NULL ? SYMTSTAT_NO_SYMBOL : SYMTSTAT_OK;
 }
