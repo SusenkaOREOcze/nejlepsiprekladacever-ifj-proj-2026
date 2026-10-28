@@ -1,8 +1,6 @@
 /**
    @file hashtable.h
-
    @author xbosakd00 (DasBean125)
-
    @date 2026-09-28
 
    @brief The public header file for the hashtable.c module; the file a user of this structure must include.
@@ -58,15 +56,8 @@ typedef enum HashtableStatusCode {
                                 // (in this case, integers, but it could be automobiles)
    @endcode
 
-   @note The hash table data type that the user works with is a union, which the user does not know. This is
-   why every function that the user has access to is actually a function-like macro.
-
-   Why is the union here in the first place? The payload member is a "dummy" member, in that it will never be
-   used to access any data; it is merely there to store type information. This permits the use of the ternary
-   operator to issue warnings when, for example, inserting the wrong type into a table (@see _htbl_insert()).
-
-   This very cool trick is from the following website:
-   @link https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/. Give it a read!
+   This very cool union trick is from this article:
+   @link https://danielchasehooper.com/posts/typechecked-generic-c-data-structures/. You should read it.
 */
 #define DEFTYPE_HASHTABLE(datatype)                                                                          \
 	typedef union {                                                                                          \
@@ -78,24 +69,20 @@ typedef enum HashtableStatusCode {
    Initialize a hash table to some non-zero initial size.
 
    @param hash_table A variable of type defined by @see DEFTYPE_HASHTABLE().
-
    @param init_size An integer specifying the initial size of the table.
-
    @returns HTBLSTAT_OK on successful allocation, HTBLSTAT_BAD_ALLOC on bad allocation, or HTBLSTAT_BAD_ARG if
    one of the arguments doesn't make sense.
 */
-#define htbl_init(hash_table, init_size) hashtable_init(&(hash_table).table, (init_size))
+#define HTBL_INIT(hash_table, init_size) hashtable_init(&(hash_table).table, (init_size))
 
 /**
    Free a hash table from memory (and from life as well).
 
    @param hash_table The hash table to free; the type must (again) be defined by @see DEFTYPE_HASHTABLE().
-
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if the argument is invalid.
-
    @note The parameter is set to NULL if this function succeeds.
 */
-#define htbl_free(hash_table) hashtable_free(&(hash_table).table)
+#define HTBL_FREE(hash_table) hashtable_free(&(hash_table).table)
 
 /**
    Clear the contents of the hash table, keeping it still allocated for reuse.
@@ -104,31 +91,22 @@ typedef enum HashtableStatusCode {
    elements. Their electrons will be forever remembered by the memory frame(s) that stored them.
 
    @param hash_table The table whose entries to clear. Type must be @see DEFTYPE_HASHTABLE().
-
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if argument is invalid.
 */
-#define htbl_clear(hash_table) hashtable_clear((hash_table).table)
+#define HTBL_CLEAR(hash_table) hashtable_clear((hash_table).table)
 
 /**
    Insert an entry with a given key and data into the hash table.
 
-   This function-like macro has _updating semantics_ - this means that if the given key already exists, its
-   value is _overwritten_ with the new data. If you don't wish for this to happen, use your third eye and
-   ginormous brain to imagine every possible scenario in which the given key already exists... or just use
-   @see htbl_exists().
-
    @param hash_table The hash table to insert an entry into. @see DEFTYPE_HASHTABLE().
-
    @param key A string representing the key of the entry. Must contain at least one character. The argument
    may be a string literal.
-
    @param data The data to add into the inserted entry. This must be a pointer to the same type as the value
    type of the hash table (@see DEFTYPE_HASHTABLE()).
-
    @returns HTBLSTAT_OK on success, HTBLSTAT_BAD_ARG if one or more arguments make no sense, or HTBL_BAD_ALLOC
    if allocation fails.
 */
-#define htbl_insert(hash_table, key, data)                                                                   \
+#define HTBL_INSERT(hash_table, key, data)                                                                   \
 	hashtable_insert(&(hash_table).table, (key), (1 ? (data) : (hash_table).payload),                        \
 	                 sizeof(*(hash_table).payload))
 
@@ -139,38 +117,22 @@ typedef enum HashtableStatusCode {
    What's that? You're _curious_? Such preposterous thoughts in today's day and age!
 
    @param hash_table The hash table to delete data from (@see DEFTYPE_HASHTABLE()).
-
    @param key The key of the entry to delete. Same restrictions as @see htbl_insert() apply.
-
    @returns HTBLSTAT_OK on success _or when such a key doesn't exist_, or HTBLSTAT_BAD_ARG if one or more
    arguments make no sense.
-
    @note The return code when no deletion takes place because of a missing key may change in the future.
 */
-#define htbl_delete(hash_table, key) hashtable_delete((hash_table).table, (key))
+#define HTBL_DELETE(hash_table, key) hashtable_delete((hash_table).table, (key))
 
 /**
    Retrieve an item with a given key from the hash table and puts its data into a given variable.
 
    @param hash_table The hash table to retrieve data from (@see DEFTYPE_HASHTABLE()).
-
    @param key The key of the entry to retrieve data from. Same restrictions as @see htbl_insert() apply.
-
    @param var_name The name of the variable into which to insert data. _Must be a modifiable l-value_.
-
    @returns Non-zero if the key was found (and its value was retrieved), or zero if the key doesn't exist.
-
-   @note This thing is slightly scary, but I will attempt to explain it now, so prepare your brain cells:
-   + The parentheses use the comma operator to evaluate an expression (specifically the ternary operator,
-   covered in the next paragraph), then throw its value away and evaluate the second expression, which is just
-   htbl_retrieve_key_exists, whose value is the value of the entire statement.
-   + The ternary operator takes advantage of the fact that the assignment operator in C has a value (and
-   therefor, a type). When the 'true' branch is evaluated (whenever a key is found), var_name has the value at
-   that key assigned to it, otherwise the 'false' branch is evaluated, which casts 0 to _the same value as the
-   payload member_. Because the C standard forbids mismatched ternary operator types, this will cause the
-   compiler to emit a warning whenever you attempt to retrieve data into a variable with the wrong type.
 */
-#define htbl_retrieve(hash_table, key, var_name)                                                             \
+#define HTBL_RETRIEVE(hash_table, key, var_name)                                                             \
 	({                                                                                                       \
 		const bool htbl_retrieve_key_exists = hashtable_exists((hash_table).table, (key));                   \
 		((htbl_retrieve_key_exists ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve(     \
@@ -183,12 +145,10 @@ typedef enum HashtableStatusCode {
    A predicate that states if the given key exists in the hash table.
 
    @param hash_table The hash table to search through (@see DEFTYPE_HASHTABLE()).
-
    @param key The key of the entry to look for. Same restrictions as @see htbl_insert() apply.
-
    @returns Non-zero if the given key exists, or zero if the key was not found.
 */
-#define htbl_exists(hash_table, key) hashtable_exists((hash_table).table, (key))
+#define HTBL_EXISTS(hash_table, key) hashtable_exists((hash_table).table, (key))
 
 /*=========
   FUNCTIONS (don't use these to interact with the data type)

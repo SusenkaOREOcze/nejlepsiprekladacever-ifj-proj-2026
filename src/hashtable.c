@@ -8,26 +8,26 @@
    @brief The implementation of the hash table data structure.
 */
 
-#ifdef HTBL_TEST
+#ifdef UNIT_UNDER_TEST
 
-#undef HTBL_TEST
+#undef UNIT_UNDER_TEST
 #include "include/hashtable_impl.h"
-#define HTBL_TEST
+#define UNIT_UNDER_TEST
 
-#else /* HTBL_TEST defined */
+#else /* UNIT_UNDER_TEST defined */
 
 #include "include/hashtable_impl.h"
 
-#endif /* HTBL_TEST not defined */
+#endif /* UNIT_UNDER_TEST not defined */
 
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
-  Internal function and data definitions
-*/
+/*=========================
+  INTERNAL FUNCTIONS & DATA
+  =========================*/
 
 /**
    The load factor which will cause the next entry inserted to inflate the size of the table.
@@ -38,17 +38,14 @@ static constexpr float HTBL_INFLATE_LOAD_FACTOR = 0.64f;
    Find an entry with the given key in the given hash table.
 
    @param table The table to search through.
-
    @param key The key to look for.
-
    @param entry_index A pointer to a variable in which to store the index of the found entry. May be NULL.
 
-   @warning If the given table is full and has no free (NULL) slot for a new entry, this parameter _will be
+   @note If the given table is full and has no free (NULL) slot for a new entry, this parameter _will be
    set to the size of the table_ (i.e., an invalid index). If the table is NULL, this value is set to
-   ULONG_MAX. Remember to check its value before use!
+   ULONG_MAX.
 
    @param opts Options that adjust which entries may be retrieved (@see struct HashtableFindOptions).
-
    @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
 */
 static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
@@ -60,14 +57,14 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 		return NULL;
 	}
 	size_t key_hash = hashtable_hash_func(key);
-	size_t base_index = hashtable_calc_index(table, key_hash);
+	size_t base_index = HASHTABLE_CALC_INDEX(table, key_hash);
 	int offset = -1;
 	htbl_entry_t *cur_entry = NULL;
 	htbl_entry_t *invalid_entry = NULL;
 
 	do { /* Note that 'offset' is guaranteed to be >=0 because of the do...while loop */
 		offset++;
-		cur_entry = table->array[hashtable_calc_index(table, base_index + offset)];
+		cur_entry = table->array[HASHTABLE_CALC_INDEX(table, base_index + offset)];
 
 		if (opts == HTBL_FIND_INVALID && invalid_entry == NULL && cur_entry != NULL &&
 		    cur_entry->key[0] == '\0')
@@ -89,7 +86,7 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 	return cur_entry ?: invalid_entry;
 }
 
-#ifdef HTBL_TEST
+#ifdef UNIT_UNDER_TEST
 
 htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
                                     const enum HashtableFindOptions opts) {
@@ -105,20 +102,10 @@ size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
 /**
    Resize the table to a bigger or smaller size.
 
-   This function uses malloc, so it is guaranteed to allocate a new table on the heap; as a result, use it
-   sparingly and when you actually have to.
-
-   @param table The table to change the size of. This must be a pointer to the table variable, because its
-   address will be modified (unless the function fails).
-
-   @param new_size The new size of the table, in number of rows. This argument must be positive and not equal
-   to the current size of the table.
-
+   @param table A pointer to the table to change the size of.
+   @param new_size The new size of the table, in number of rows.
    @returns HTBLSTAT_OK if the resize was successfull, HTBLSTAT_BAD_ARG with wrong arguments or
    HTBLSTAT_BAD_ALLOC if allocation of the table failed.
-
-   @note If an error occurs at any point in time (i.e. if the return code is not HASHTABLE_OK), the old table
-   will remain unscathed.
 */
 static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 	if (table == NULL || *table == NULL || new_size == 0)
@@ -148,10 +135,10 @@ static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 		}
 
 		/* Valid entries are inserted the same way as the function hashtable_insert() */
-		size_t new_index = hashtable_calc_index(new_table, old_entry->hash);
-		while (new_table->array[hashtable_calc_index(new_table, new_index)] != NULL)
+		size_t new_index = HASHTABLE_CALC_INDEX(new_table, old_entry->hash);
+		while (new_table->array[HASHTABLE_CALC_INDEX(new_table, new_index)] != NULL)
 			new_index++;
-		new_table->array[hashtable_calc_index(new_table, new_index)] = old_entry;
+		new_table->array[HASHTABLE_CALC_INDEX(new_table, new_index)] = old_entry;
 	}
 
 	/* Free _just the old table itself_ */
@@ -160,17 +147,15 @@ static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 	return HTBLSTAT_OK;
 }
 
-/*
-  Data structure operation definitions.
-*/
+/*==============
+  ADT OPERATIONS
+  ==============*/
 
 /**
    Create an empty hash table with a non-zero initial size.
 
    @param table A pointer to the _variable_ that holds the hash table (as it will be written indirectly).
-
    @param init_size The initial capacity of the hash table. Must be greater than 0.
-
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_init(htbl_t **table, const size_t init_size) {
@@ -196,7 +181,6 @@ htbl_stat_t hashtable_init(htbl_t **table, const size_t init_size) {
    Free the given table from memory.
 
    @param table A pointer to the variable holding the table that will be freed.
-
    @return @see htbl_stat_t.
 */
 htbl_stat_t hashtable_free(htbl_t **table) {
@@ -214,7 +198,6 @@ htbl_stat_t hashtable_free(htbl_t **table) {
    Remove every entry from the table, leaving the table array still in memory.
 
    @param table The table to clear.
-
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_clear(htbl_t *table) {
@@ -241,18 +224,10 @@ htbl_stat_t hashtable_clear(htbl_t *table) {
 /**
    Insert an entry into the table at the given key with the given data.
 
-   This function allows the data argument to be of any type. Make sure you set the data_size properly (or
-   don't; disrespect the operating system, see what happens).
-
-   @param table The table to insert data into. This is a pointer to the variable that stores the table,
-   because this function can _resize_ the table under certain conditions.
-
+   @param table A pointer to the table to insert data into.
    @param key The key of the newly inserted entry.
-
    @param data A pointer to the data to be added to the entry.
-
    @param data_size How many bytes the data takes up in memory.
-
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const size_t data_size) {
@@ -260,7 +235,7 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 		return HTBLSTAT_BAD_ARG;
 
 	/* Resize the table if needed */
-	if (hashtable_load_factor(*table) >= HTBL_INFLATE_LOAD_FACTOR) {
+	if (HASHTABLE_LOAD_FACTOR(*table) >= HTBL_INFLATE_LOAD_FACTOR) {
 		htbl_stat_t resize_stat = hashtable_resize(table, 2 * (*table)->size);
 		if (resize_stat != HTBLSTAT_OK)
 			return HTBLSTAT_BAD_ALLOC;
@@ -318,15 +293,8 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 /**
    Delete an entry from the hash table.
 
-   This function is special in that the entry is not actually deallocated from memory, only its key
-   is. Afterwards the key has the empty string "\0" assigned to it. Any key in such form has the semantics of
-   _being invalid_ (also known as being "plugged"), i.e. its data should not be accessed (note that the data
-   is still very much there, as well as the hash).
-
    @param table The hash table to delete the entry from.
-
    @param key The key of the to-be-deleted entry.
-
    @returns @see htbl_stat_t.
 */
 htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
@@ -352,13 +320,9 @@ htbl_stat_t hashtable_delete(htbl_t *table, htbl_key_t key) {
    Retrieve an entry at a given key from the hash table.
 
    @param table The table to retrieve an entry from.
-
    @param key The key of the sought-after entry.
-
    @returns A pointer to the .data field of the entry struct (@see htbl_entry_t), or NULL if the entry is not
    found or the table doesn't exist.
-
-   @todo This function could possibly be inline, however that requires testing because it is used in a macro.
 */
 char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
 	if (table == NULL)
@@ -372,9 +336,7 @@ char *hashtable_retrieve(htbl_t *table, htbl_key_t key) {
    A predicate stating whether an item with a given key exists inside the hash table.
 
    @param table A table to search through.
-
    @param key The key of the entry to find.
-
    @returns true if an entry with the key exists, or false if not.
 */
 bool hashtable_exists(const htbl_t *table, htbl_key_t key) {
