@@ -24,9 +24,6 @@ DEFTYPE_HASHTABLE(symt_symbol_t) symt_search_table_t;
 
 /**
    A single element from the symbol table stack. The element in question is a hash table.
-
-   @note Because this uses the hashtable.c module, it can be inferred that this scope is automatically
-   inflatable.
 */
 typedef struct SymtableScope {
 	symt_search_table_t scope;
@@ -35,14 +32,10 @@ typedef struct SymtableScope {
 
 /**
    The table of symbols (or should I say symbol scopes?).
-
-   This is implemented as a stack of hash tables (which act as search tables). The stack is implemented as a
-   linked list. There is also a secondary stack of "standby tables" - these are pre-allocated empty hash
-   tables ready for immediate use.
 */
 struct Symtable {
-	symt_scope_t *scope_top;   //!< Top of the active scope stack. This is simultaneously the current scope.
-	symt_scope_t *standby_top; //!< Top of the standby scope stack.
+	symt_scope_t *scope_top;   //!< This is simultaneously the current scope.
+	symt_scope_t *standby_top;
 	size_t scope_depth;
 	unsigned long long uid_accum;
 };
@@ -63,8 +56,6 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope);
 /**
    Allocate a new scope (hash table) and return a pointer to it.
 
-   @note If this function fails, the value of 'scope' is left unchanged.
-
    @param scope A pointer to the variable that shall hold the new scope's address.
    @param scope_size The initial size of the new scope (how many identifiers it can hold).
    @returns SYMTSTAT_OK on success, or an error on failure.
@@ -81,8 +72,7 @@ symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size
 inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope);
 
 /**
-   Pop a scope off of the given scope stack and save its address. This is essentially a linked list 'pop'
-   function combined with a 'first' function.
+   Pop a scope off of the given scope stack and save its address.
 
    @param stack_top The address of the pointer to the top of the stack.
    @param[out] scope An address of a variable in which to store the popped scope address.
@@ -102,6 +92,6 @@ extern inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_s
 extern inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope);
 extern inline void symt_free_scope(symt_scope_t *scope);
 
-#endif /* TEST_SYMTABLE no defined */
+#endif /* TEST_SYMTABLE not defined */
 
 #endif /* symtable.h included */

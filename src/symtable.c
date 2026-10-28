@@ -9,11 +9,10 @@
 #include "include/symtable_impl.h"
 
 constexpr size_t SYMT_INITIAL_SCOPE_SIZE = 64;
-constexpr size_t SYMT_INITIAL_STANDBY_SCOPES = 10; /* Note that at least one (global) scope is always
-                                                    * allocated, no matter the value here */
+constexpr size_t SYMT_INITIAL_STANDBY_SCOPES = 10; /* If 0, a global scope is still allocated */
 
 /*================
-  Helper functions
+  HELPER FUNCTIONS
   ================*/
 
 symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size) {
@@ -53,7 +52,7 @@ inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t *
 		return SYMTSTAT_NO_SCOPE;
 
 	(*scope) = *stack_top;       /* Save the top element */
-	*stack_top = (*scope)->prev; /* Move stack top to the next element */
+	*stack_top = (*scope)->prev; /* Move stack top to the next (lower) element */
 	return SYMTSTAT_OK;
 }
 
@@ -72,9 +71,9 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope) {
 	return SYMTSTAT_OK;
 }
 
-/*====================
-  Symtable init & free
-  ====================*/
+/*===========
+  INIT & FREE
+  ===========*/
 
 symt_stat_t symt_init(symt_t **const sym_table) {
 	if (sym_table == NULL)
@@ -94,7 +93,7 @@ symt_stat_t symt_init(symt_t **const sym_table) {
 	symt_scope_t *new_global_scope = NULL;
 	result = symt_alloc_scope(&new_global_scope, SYMT_INITIAL_SCOPE_SIZE);
 	if (result != SYMTSTAT_OK)
-		goto FAIL_ALLOC; /* Scary goto statement */
+		goto FAIL_ALLOC; /* boo */
 
 	result = symt_push_scope(&new_table->scope_top, new_global_scope);
 	if (result != SYMTSTAT_OK)
@@ -142,11 +141,11 @@ symt_stat_t symt_free(symt_t *sym_table) {
 	/* Free the active scope stack */
 	while (sym_table->scope_top != NULL) {
 		symt_scope_t *cur_scope = sym_table->scope_top;
-		sym_table->scope_top = cur_scope->prev; /* Descend down the stack */
+		sym_table->scope_top = cur_scope->prev; /* Descend down the stack, vol. 2 */
 		symt_free_scope(cur_scope);
 	}
 
-	/* Same shit, different stack */
+	/* Same sh*t, different stack */
 	while (sym_table->standby_top != NULL) {
 		symt_scope_t *cur_scope = sym_table->standby_top;
 		sym_table->standby_top = cur_scope->prev;
@@ -157,19 +156,16 @@ symt_stat_t symt_free(symt_t *sym_table) {
 	return SYMTSTAT_OK;
 }
 
-/*===============================
-  Symtable scope depth adjustment
-  ===============================*/
+/*======================
+  SCOPE DEPTH ADJUSTMENT
+  ======================*/
 
 symt_stat_t symt_inc_scope_depth(symt_t *sym_table) {
 	if (sym_table == NULL)
 		return SYMTSTAT_BAD_ARG;
 	symt_stat_t result = SYMTSTAT_OK;
 
-	/* Moving a scope from the standby stack onto the global scope stack, like this:
-	   ... <- scope_0  <--MOVE--  standby_0 -> ...
-	    scope_top^                  ^standby_top
-	*/
+	/* Moving a scope from the standby stack onto the global scope stack */
 	symt_scope_t *cur_standby_scope = NULL;
 	result = symt_pop_scope(&sym_table->standby_top, &cur_standby_scope);
 	if (result != SYMTSTAT_OK)
@@ -205,19 +201,20 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table) {
 	if (sym_table->scope_depth == 0)
 		return result;
 
-	/* Doing the inverse of symt_inc_scope_depth(), so just go there and flip the arrow in the comment */
+	/* Doing the inverse of symt_inc_scope_depth() */
 	symt_scope_t *cur_global_scope = NULL;
 	result = symt_pop_scope(&sym_table->scope_top, &cur_global_scope);
 	symt_clear_scope(cur_global_scope); /* This is very important */
+
 	result = symt_push_scope(&sym_table->standby_top, cur_global_scope);
 	sym_table->scope_depth--;
 
 	return result;
 }
 
-/*===================================
-  Symtable insert and find operations
-  ===================================*/
+/*=============
+  INSERT & FIND
+  =============*/
 
 symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *symbol) {
 	if (sym_table == NULL || ident == NULL || symbol == NULL)

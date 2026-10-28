@@ -23,10 +23,6 @@
 
 /**
    A symbol from the symbol table. How symbolic.
-
-   @note The UID field is defined because it is possible to have several instances of a variable with the same
-   name across different scopes with the same depth. In case you were wondering, the UID can hold 2^64 - 1, or
-   1.84467440737e+19 values. Good luck making that many symbols.
 */
 typedef struct SymtableSymbol {
 	symt_data_type_t data_type;
@@ -37,8 +33,7 @@ typedef struct SymtableSymbol {
 /**
    The actual symbol table type. This is _just_ a single table, trust (thousand-yard stare).
 
-   @note This is a state machine, i.e. every Symtable struct initialized by symt_init() has an internal state
-   that changes as you work with it.
+   @note This structure has state initialized by @ref symt_init, so deal with it accordingly.
 */
 typedef struct Symtable symt_t;
 
@@ -48,8 +43,6 @@ typedef struct Symtable symt_t;
 
 /**
    Allocate and initialize a symbol table in memory. The scope depth is initialized to 0 (global).
-
-   @note If this function fails to allocate the table, sym_table will be left unchanged.
 
    @param[out] sym_table A pointer to the variable that'll store the new table.
    @returns SYMTSTAT_OK on success, an error code otherwise.
@@ -77,20 +70,15 @@ symt_stat_t symt_inc_scope_depth(symt_t *sym_table);
 /**
    Decrement the current scope depth.
 
-   @note If the current scope depth is 0 (global scope), this function does nothing.
-
    @param sym_table The symbol table to work with.
-   @returns SYMTSTAT_OK on success, an error code otherwise.
+   @returns SYMTSTAT_OK on success (or when the scope depth is already 0), an error code otherwise.
 */
 symt_stat_t symt_dec_scope_depth(symt_t *sym_table);
 
 /**
    Insert an identifier-symbol pair into a symbol table.
 
-   @note The semantics of this operation vary based on the current state. If a symbol is not defined in the
-   current scope, a new one is inserted; otherwise the existing symbol is overwritten. Because it is possible
-   that a symbol shares a name with that from another scope (or even from a different scope of the same
-   depth), the UID of the symbol is set automatically even if you manually specify it.
+   @note The uid field of the symbol is set automatically.
 
    @param sym_table The symbol table to insert into.
    @param ident The identifier (string) of the symbol.
