@@ -34,7 +34,7 @@ int funct_resize_type_array(int8_t **const array, const size_t new_size) {
 	int8_t *new_array = realloc(*array, new_size * sizeof(*new_array));
 	if (new_array == NULL)
 		return 1;
-	
+
 	*array = new_array;
 	return 0;
 }
@@ -46,7 +46,7 @@ int funct_append_def_type(funct_t *table, const symt_data_type_t type) {
 	/* No need to resize yet */
 	if (table->def_arr_im_count >= table->def_arr_size) {
 		if (funct_resize_type_array(&table->def_type_array, table->def_arr_size * 2))
-		    return 1;
+			return 1;
 	}
 
 	/* Append the device (note how it uses the "imaginary" index) */
@@ -62,7 +62,7 @@ int funct_append_call_type(funct_t *table, const symt_data_type_t type) {
 	/* No need to resize yet */
 	if (table->call_arr_im_count >= table->call_arr_size) {
 		if (funct_resize_type_array(&table->call_type_array, table->call_arr_size * 2))
-		    return 1;
+			return 1;
 	}
 
 	/* Append the device (note how it uses the "imaginary" index) */
@@ -94,7 +94,7 @@ symt_stat_t funct_init(funct_t **const func_table) {
 		goto FAIL_ALLOC_DEF;
 
 	/* Hashtable (scope, search table, whatever you fancy) init */
-	if (htbl_init(new_table->scope, FUNCT_INIT_SCOPE_SIZE) != HTBLSTAT_OK)
+	if (HTBL_INIT(new_table->scope, FUNCT_INIT_SCOPE_SIZE) != HTBLSTAT_OK)
 		goto FAIL_ALLOC_HTBL;
 
 	/* Remaining table init */
@@ -130,7 +130,7 @@ symt_stat_t funct_free(funct_t *func_table) {
 	/* Blow it all up */
 	free(func_table->call_type_array);
 	free(func_table->def_type_array);
-	htbl_free(func_table->scope);
+	HTBL_FREE(func_table->scope);
 	free(func_table);
 
 	return SYMTSTAT_OK;
@@ -145,7 +145,7 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 		return SYMTSTAT_BAD_ARG;
 
 	/* Starting to realize these are just glorified wrapper functions... */
-	if (htbl_retrieve(table->scope, ident, *out_symbol) != HTBLSTAT_OK)
+	if (HTBL_RETRIEVE(table->scope, ident, *out_symbol) != HTBLSTAT_OK)
 		return SYMTSTAT_NO_SYMBOL;
 
 	return SYMTSTAT_OK;
@@ -178,7 +178,7 @@ inline bool funct_exists(const funct_t *table, const char *ident) {
 	if (table == NULL || ident == NULL)
 		return false;
 
-	return htbl_exists(table->scope, ident);
+	return HTBL_EXISTS(table->scope, ident);
 }
 
 /*================
@@ -190,8 +190,8 @@ symt_stat_t funct_insert_begin(funct_t *table, const char *ident) {
 		return SYMTSTAT_BAD_ARG;
 
 	if (table->state_insert)
-	    return SYMTSTAT_BAD_STATE;
-	if (htbl_exists(table->scope, ident)) /* This function doesn't have update semantics */
+		return SYMTSTAT_BAD_STATE;
+	if (HTBL_EXISTS(table->scope, ident)) /* This function doesn't have update semantics */
 		return SYMTSTAT_BAD_ARG;
 
 	/* Start with an empty slate */
@@ -237,11 +237,10 @@ symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_
 
 	/* Inserting the final symbol */
 	table->pending_symbol.ret_type = ret;
-	if (htbl_insert(table->scope, ident, &table->pending_symbol) != HTBLSTAT_OK)
+	if (HTBL_INSERT(table->scope, ident, &table->pending_symbol) != HTBLSTAT_OK)
 		return SYMTSTAT_BAD_ALLOC;
 
 	/* Cleanup */
 	table->state_insert = false;
 	return SYMTSTAT_OK;
 }
-

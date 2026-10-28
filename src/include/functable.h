@@ -53,7 +53,7 @@ symt_stat_t funct_init(funct_t **const func_table);
 
 /**
    Destroy any signs that a function table existed in memory. This is safe to call when
-   @ref funct_pending_insert is truee.
+   @ref funct_pending_insert is true.
 
    @param func_table The function table to free from memory.
    @returns SYMTSTAT_OK on success, or an error.
@@ -90,6 +90,8 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
 */
 symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret);
 
+#ifndef UNIT_UNDER_TEST
+
 /**
    A predicate to test if a symbol insertion is currently in progress.
 
@@ -106,6 +108,8 @@ inline bool funct_pending_insert(const funct_t *table);
    @returns true if the function exists, false otherwise (including when an error occurs).
 */
 inline bool funct_exists(const funct_t *table, const char *ident);
+
+#endif /* UNIT_UNDER_TEST not defined */
 
 /**
    Find a function symbol with the given identifier and return its data.
@@ -130,7 +134,11 @@ symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const size_t
                                  symt_data_type_t *out_type);
 
 /* When the compiler is suspicious */
+#ifndef UNIT_UNDER_TEST
+
 extern inline bool funct_pending_insert(const funct_t *table);
 extern inline bool funct_exists(const funct_t *table, const char *ident);
+
+#endif /* UNIT_UNDER_TEST not defined */
 
 #endif
