@@ -84,4 +84,25 @@ int funct_append_def_type(funct_t *table, const symt_data_type_t type);
 */
 int funct_append_call_type(funct_t *table, const symt_data_type_t type);
 
+/**
+   Compare the function signature of two symbols. Takes the lowest of the symbol's parameter counts to ensure
+   array bounds are respected.
+
+   @param base_sym The symbol to compare to.
+   @param comp_sym The symbol to compare.
+   @returns SYMTSTAT_OK if symbol signatures match, SYMTSTAT_FUNC_DIFF_CALL_SIGN if compared symbol's
+   signatures differ from base call sign. and base def signature doesn't exist, SYMTSTAT_FUNC_DIFF_DEF_SIGN if
+   compared symbol's signatures differ from base def signature, or an error.
+*/
+symt_stat_t funct_compare_sym_signatures(const funct_symbol_t *base_sym, const funct_symbol_t *comp_sym);
+
+/**
+   Update a function symbol without overwriting existing data.
+
+   @param dst_sym The destination symbol (the symbol to update).
+   @param src_sym The source symbol (the symbol to draw data from).
+   @returns SYMTSTAT_OK on success, or an error.
+*/
+symt_stat_t funct_copy_update_symbol(funct_symbol_t *dst_sym, const funct_symbol_t *src_sym);
+
 #endif
