@@ -167,14 +167,14 @@ symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const size_t
 	return SYMTSTAT_OK;
 }
 
-inline bool funct_pending_insert(const funct_t *table) {
+bool funct_pending_insert(const funct_t *table) {
 	if (table == NULL)
 		return false;
 
 	return table->state_insert;
 }
 
-inline bool funct_exists(const funct_t *table, const char *ident) {
+bool funct_exists(const funct_t *table, const char *ident) {
 	if (table == NULL || ident == NULL)
 		return false;
 

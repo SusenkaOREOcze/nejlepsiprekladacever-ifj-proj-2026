@@ -90,15 +90,13 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
 */
 symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret);
 
-#ifndef UNIT_UNDER_TEST
-
 /**
    A predicate to test if a symbol insertion is currently in progress.
 
    @param table The table to work on.
    @returns true if an insertion is in progress, false otherwise.
 */
-inline bool funct_pending_insert(const funct_t *table);
+bool funct_pending_insert(const funct_t *table);
 
 /**
    A predicate to ascertain the existence of a function with a given name.
@@ -107,9 +105,7 @@ inline bool funct_pending_insert(const funct_t *table);
    @param ident The sought-after function's name.
    @returns true if the function exists, false otherwise (including when an error occurs).
 */
-inline bool funct_exists(const funct_t *table, const char *ident);
-
-#endif /* UNIT_UNDER_TEST not defined */
+bool funct_exists(const funct_t *table, const char *ident);
 
 /**
    Find a function symbol with the given identifier and return its data.
@@ -132,13 +128,5 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 */
 symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const size_t param_number,
                                  symt_data_type_t *out_type);
-
-/* When the compiler is suspicious */
-#ifndef UNIT_UNDER_TEST
-
-extern inline bool funct_pending_insert(const funct_t *table);
-extern inline bool funct_exists(const funct_t *table, const char *ident);
-
-#endif /* UNIT_UNDER_TEST not defined */
 
 #endif
