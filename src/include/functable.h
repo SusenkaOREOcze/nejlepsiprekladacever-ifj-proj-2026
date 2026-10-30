@@ -78,7 +78,8 @@ symt_stat_t funct_insert_begin(funct_t *table);
    @param table The table in which to work.
    @param param_type The type of the inserted function's parameter.
    @param is_def Specifies if the inserted symbol will be a function call or a function definition.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, SYMTSTAT_BAD_ARG if
+   param_type is SYMT_TYPE_UNDEFINED, or an error.
 */
 symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type, const bool is_def);
 
