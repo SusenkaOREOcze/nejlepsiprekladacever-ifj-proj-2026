@@ -34,24 +34,10 @@
 */
 static constexpr float HTBL_INFLATE_LOAD_FACTOR = 0.64f;
 
-/**
-   Find an entry with the given key in the given hash table.
-
-   @param table The table to search through.
-   @param key The key to look for.
-   @param entry_index A pointer to a variable in which to store the index of the found entry. May be NULL.
-
-   @note If the given table is full and has no free (NULL) slot for a new entry, this parameter _will be
-   set to the size of the table_ (i.e., an invalid index). If the table is NULL, this value is set to
-   ULONG_MAX.
-
-   @param opts Options that adjust which entries may be retrieved (@see struct HashtableFindOptions).
-   @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
-*/
-static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
-                                          const enum HashtableFindOptions opts) {
+htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
+                                   const enum HashtableFindOptions opts) {
 	if (table == NULL || key == NULL) {
-		fprintf(stderr, "htbl_find_entry: provided table doesn't exist!\n");
+		fprintf(stderr, "hashtable_find_entry: provided table doesn't exist!\n");
 		if (entry_index != NULL)
 			*entry_index = ULONG_MAX;
 		return NULL;
@@ -86,28 +72,7 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 	return cur_entry ?: invalid_entry;
 }
 
-#ifdef UNIT_UNDER_TEST
-
-htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
-                                    const enum HashtableFindOptions opts) {
-	return hashtable_find_entry(table, key, entry_index, opts);
-}
-
-size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
-	return hashtable_hash_func(key) % size;
-}
-
-#endif
-
-/**
-   Resize the table to a bigger or smaller size.
-
-   @param table A pointer to the table to change the size of.
-   @param new_size The new size of the table, in number of rows.
-   @returns HTBLSTAT_OK if the resize was successfull, HTBLSTAT_BAD_ARG with wrong arguments or
-   HTBLSTAT_BAD_ALLOC if allocation of the table failed.
-*/
-static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
+htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 	if (table == NULL || *table == NULL || new_size == 0)
 		return HTBLSTAT_BAD_ARG;
 	if (new_size == (*table)->size || new_size < ((*table)->count + 1))
