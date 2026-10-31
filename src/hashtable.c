@@ -51,7 +51,7 @@ static constexpr float HTBL_INFLATE_LOAD_FACTOR = 0.64f;
 
    @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
 */
-static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
+htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
                                           const enum HashtableFindOptions opts) {
 	if (table == NULL || key == NULL) {
 		fprintf(stderr, "htbl_find_entry: provided table doesn't exist!\n");
@@ -89,19 +89,6 @@ static htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, s
 	return cur_entry ?: invalid_entry;
 }
 
-#ifdef HTBL_TEST
-
-htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
-                                    const enum HashtableFindOptions opts) {
-	return hashtable_find_entry(table, key, entry_index, opts);
-}
-
-size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
-	return hashtable_hash_func(key) % size;
-}
-
-#endif
-
 /**
    Resize the table to a bigger or smaller size.
 
@@ -120,7 +107,7 @@ size_t debug_calc_index_from_key(htbl_key_t key, const size_t size) {
    @note If an error occurs at any point in time (i.e. if the return code is not HASHTABLE_OK), the old table
    will remain unscathed.
 */
-static htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
+htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size) {
 	if (table == NULL || *table == NULL || new_size == 0)
 		return HTBLSTAT_BAD_ARG;
 	if (new_size == (*table)->size || new_size < ((*table)->count + 1))
