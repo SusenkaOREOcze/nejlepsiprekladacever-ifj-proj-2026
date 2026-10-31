@@ -63,7 +63,7 @@ struct Functable {
 
    @param array A pointer to the address of the array to change the size of.
    @param new_size The new size of the array.
-   @returns 0 on success, 1 on failure or 2 if this call would do nothing (new_size is identical to current).
+   @returns 0 on success or 1 on failure.
 */
 int funct_resize_type_array(int8_t **const array, const size_t new_size);
 

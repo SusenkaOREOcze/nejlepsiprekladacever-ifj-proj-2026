@@ -44,9 +44,10 @@ int funct_append_def_type(funct_t *table, const symt_data_type_t type) {
 	if (table == NULL)
 		return 1;
 
-	/* No need to resize yet */
+	/* Please my beloved operating system, grant me more of thine sacred memory */
 	if (table->def_arr_im_count >= table->def_arr_size) {
-		if (funct_resize_type_array(&table->def_type_array, table->def_arr_size * 2))
+		table->def_arr_size *= 2;
+		if (funct_resize_type_array(&table->def_type_array, table->def_arr_size))
 			return 1;
 	}
 
@@ -60,13 +61,14 @@ int funct_append_call_type(funct_t *table, const symt_data_type_t type) {
 	if (table == NULL)
 		return 1;
 
-	/* Please my beloved operating system, grant me more of your sacred memory */
+	/* GIVE ME your memory motherf- */
 	if (table->call_arr_im_count >= table->call_arr_size) {
-		if (funct_resize_type_array(&table->call_type_array, table->call_arr_size * 2))
+		table->call_arr_size *= 2;
+		if (funct_resize_type_array(&table->call_type_array, table->call_arr_size))
 			return 1;
 	}
 
-	/* Append the device (note how it uses the "imaginary" index) */
+	/* Append the thingymabob */
 	table->call_type_array[table->call_arr_im_count] = (int8_t)type;
 	table->call_arr_im_count++;
 	return 0;
@@ -330,7 +332,7 @@ symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_
 		goto EXIT_UPDATE;
 
 	if (table->is_insert_definition) { /* Function definition */
-		          /* Definition already exists (redefinition is not allowed) */
+		                               /* Definition already exists (redefinition is not allowed) */
 		if (existing_sym.def_param_type_array != NULL) {
 			result = SYMTSTAT_BAD_ARG;
 			goto EXIT_UPDATE;
