@@ -204,7 +204,7 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table) {
 
 	/* Doing the inverse of symt_inc_scope_depth() */
 	symt_scope_t *cur_global_scope = NULL;
-	result = symt_pop_scope(&sym_table->scope_top, &cur_global_scope);
+	symt_pop_scope(&sym_table->scope_top, &cur_global_scope);
 	symt_clear_scope(cur_global_scope); /* This is very important */
 
 	result = symt_push_scope(&sym_table->standby_top, cur_global_scope);
