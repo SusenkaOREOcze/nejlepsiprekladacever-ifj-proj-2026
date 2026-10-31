@@ -68,20 +68,20 @@ symt_stat_t funct_free(funct_t *func_table);
    Begin inserting a new function identifier into a function table.
 
    @param table The table into which to insert.
+   @param is_def Specifies if the inserted symbol will be a function call or a function definition.
    @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if an insertion is already pending, or an error.
 */
-symt_stat_t funct_insert_begin(funct_t *table);
+symt_stat_t funct_insert_begin(funct_t *table, const bool is_def);
 
 /**
    Add a parameter type to the currently inserted function. See @ref funct_insert_begin.
 
    @param table The table in which to work.
    @param param_type The type of the inserted function's parameter.
-   @param is_def Specifies if the inserted symbol will be a function call or a function definition.
    @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, SYMTSTAT_BAD_ARG if
    param_type is SYMT_TYPE_UNDEFINED, or an error.
 */
-symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type, const bool is_def);
+symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type);
 
 /**
    Finish inserting a function symbol (and leave the insertion state).
@@ -89,7 +89,6 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
    @param table The table on which to operate.
    @param ident The function's identifier.
    @param ret The function's return type.
-   @param is_def Specifies whether to insert a function definition symbol (true) or call symbol (false).
 
    @returns SYMTSTAT_OK if no symbol of the same name exists, otherwise:
        + SYMTSTAT_FUNC_BAD_PARAM_CNT if the existing symbol's parameter count differs,
@@ -97,10 +96,10 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
        signature exists,
        + SYMTSTAT_FUNC_DIFF_DEF_SIGN if the existing symbol's definition signature differs;
        .
-   otherwise if this is a function call symbol (is_def == false):
+   otherwise if this is a function call symbol (See @ref funct_insert_begin):
        + SYMTSTAT_FUNC_BAD_RETURN if the existing symbol's return type differs and isn't SYMT_TYPE_UNDEFINED;
        .
-   otherwise if this is a function definition symbol (is_def == true):
+   otherwise if this is a function definition symbol:
        + SYMTSTAT_BAD_ARG if a definition already exists (redefinition),
        + SYMTSTAT_FUNC_BAD_RETURN if the existing symbol's return type differs or if the inserted type is
        SYMT_TYPE_UNDEFINED;
@@ -108,8 +107,7 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
     otherwise SYMTSTAT_OK. Unless this function ends with any other unmentioned error (such as *_BAD_ARG),
     it attempts to update an existing symbol as much as possible (without overwriting existing data).
 */
-symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret,
-                             const bool is_def);
+symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret);
 
 /**
    A predicate to test if a symbol insertion is currently in progress.

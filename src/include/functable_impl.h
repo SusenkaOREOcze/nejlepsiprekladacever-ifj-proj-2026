@@ -45,6 +45,7 @@ struct Functable {
 	size_t call_arr_im_count; //!< Imaginary first index - elements between this and *_count may be invalid.
 
 	bool state_insert;             //!< true if a symbol insertion is in progress, false otherwise.
+	bool is_insert_definition;     //!< true if the inserted symbol is a function definition
 	funct_symbol_t pending_symbol; //!< Symbol in the making. Invalid if state_insert == false.
 
 	/**

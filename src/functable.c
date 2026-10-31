@@ -166,6 +166,7 @@ symt_stat_t funct_init(funct_t **const func_table) {
 	new_table->call_arr_size = FUNCT_INIT_TYPE_ARRAY_SIZE;
 
 	new_table->state_insert = false;
+	new_table->is_insert_definition = false;
 	new_table->pending_symbol = UNDEFINED_SYMBOL;
 	*func_table = new_table;
 
@@ -204,7 +205,7 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 		return SYMTSTAT_BAD_ARG;
 
 	/* Starting to realize these are just glorified wrapper functions... */
-	if (HTBL_RETRIEVE(table->scope, ident, *out_symbol) != HTBLSTAT_OK)
+	if (!HTBL_RETRIEVE(table->scope, ident, *out_symbol))
 		return SYMTSTAT_NO_SYMBOL;
 
 	return SYMTSTAT_OK;
@@ -212,10 +213,10 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 
 symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const int param_number,
                                  symt_data_type_t *out_type) {
-	if (func_symbol == NULL || out_type == NULL)
+	if (func_symbol == NULL || out_type == NULL || param_number < 0)
 		return SYMTSTAT_BAD_ARG;
 	if (param_number >= func_symbol->param_count)
-		return func_symbol->param_count < 0 ? SYMTSTAT_FUNC_NO_PARAMS : SYMTSTAT_BAD_ARG;
+		return func_symbol->param_count <= 0 ? SYMTSTAT_FUNC_NO_PARAMS : SYMTSTAT_BAD_ARG;
 
 	/* Definition parameters have priority */
 	if (func_symbol->def_param_type_array != NULL)
@@ -244,7 +245,7 @@ bool funct_exists(const funct_t *table, const char *ident) {
   SYMBOL INSERTION
   ================*/
 
-symt_stat_t funct_insert_begin(funct_t *table) {
+symt_stat_t funct_insert_begin(funct_t *table, const bool is_def) {
 	if (table == NULL)
 		return SYMTSTAT_BAD_ARG;
 	if (table->state_insert)
@@ -253,12 +254,13 @@ symt_stat_t funct_insert_begin(funct_t *table) {
 	/* Start with an empty slate */
 	table->pending_symbol = UNDEFINED_SYMBOL;
 	table->state_insert = true;
+	table->is_insert_definition = is_def;
 	table->call_arr_im_count = table->call_arr_count; /* sync the indeces */
 	table->def_arr_im_count = table->def_arr_count;
 	return SYMTSTAT_OK;
 }
 
-symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type, const bool is_def) {
+symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type) {
 	if (table == NULL || param_type == SYMT_TYPE_UNDEFINED)
 		return SYMTSTAT_BAD_ARG;
 	if (!table->state_insert)
@@ -270,7 +272,7 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
 	table->pending_symbol.param_count++;
 
 	/* Function definition symbol */
-	if (is_def) {
+	if (table->is_insert_definition) {
 		if (table->pending_symbol.def_param_type_array == NULL)
 			table->pending_symbol.def_param_type_array = table->def_type_array + table->def_arr_count;
 
@@ -288,16 +290,15 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
 	return SYMTSTAT_OK;
 }
 
-symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret,
-                             const bool is_def) {
-	if (table == NULL || ident == NULL)
+symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret) {
+	if (table == NULL || ident == NULL || ident[0] == '\0')
 		return SYMTSTAT_BAD_ARG;
 	if (!table->state_insert)
 		return SYMTSTAT_BAD_STATE;
 	symt_stat_t result = SYMTSTAT_OK;
 
 	/* Definitions cannot have an undefined return type */
-	if (is_def && ret == SYMT_TYPE_UNDEFINED) {
+	if (table->is_insert_definition && ret == SYMT_TYPE_UNDEFINED) {
 		result = SYMTSTAT_FUNC_BAD_RETURN;
 		goto EXIT_CLEANUP;
 	}
@@ -328,7 +329,7 @@ symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_
 	if ((result = funct_compare_sym_signatures(&existing_sym, pending_sym)) != SYMTSTAT_OK)
 		goto EXIT_UPDATE;
 
-	if (is_def) { /* Function definition */
+	if (table->is_insert_definition) { /* Function definition */
 		          /* Definition already exists (redefinition is not allowed) */
 		if (existing_sym.def_param_type_array != NULL) {
 			result = SYMTSTAT_BAD_ARG;
