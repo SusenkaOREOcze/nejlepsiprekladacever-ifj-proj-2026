@@ -81,7 +81,7 @@ typedef enum PrecTerminal {
 	PREC_EQ,     // equal and not equal
 	PREC_AND,    // logical and
 	PREC_OR,     // logical or
-	PREC_RANGE,  // to until and by after an operand, CONTROL and LISTS
+	PREC_RANGE,  // to until and by after an operand inside parens, LISTS
 	PREC_LPAREN, // grouping open paren
 	PREC_RPAREN, // grouping close paren
 	PREC_END,    // end symbol, any token that cant continue the expression
@@ -164,6 +164,17 @@ typedef struct PrecStack {
  * @return true if the expression was valid
  */
 static bool prec_parse(syntax_parser_t *parser);
+
+/**
+ * @brief parses the rest of an expression whose first identifier was already consumed
+ *
+ * this is expr_tail from the grammar, the statement parser eats the identifier first
+ * to see if an assign follows, if not the expression goes on from here
+ *
+ * @param parser parser sitting right after the identifier
+ * @return true if the expression was valid
+ */
+static bool prec_parse_tail(syntax_parser_t *parser);
 
 /**
  * @brief marks a syntax error
@@ -281,12 +292,13 @@ static prec_input_t prec_classify(const syntax_parser_t *parser, prec_terminal_t
 
 	switch (token->type) {
 	case TOKEN_IDENTIFIER:
-		// after an operand only to until and by continue the expression, they are range operators
+		// after an operand only to until and by continue the expression, as range operators,
+		// and only inside parens like (1 to 5).toList, a for loop header parses its range itself
 		// any other identifier ends it and the caller decides if thats an error
 		if (!after_operand) {
 			input.terminal = PREC_ID;
-		} else if (token_is_identifier(token, "to") || token_is_identifier(token, "until") ||
-		           token_is_identifier(token, "by")) {
+		} else if (depth > 0 && (token_is_identifier(token, "to") || token_is_identifier(token, "until") ||
+		                         token_is_identifier(token, "by"))) {
 			input.terminal = PREC_RANGE;
 		}
 		break;
@@ -627,7 +639,14 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 	return true;
 }
 
-static bool prec_parse(syntax_parser_t *parser) {
+/**
+ * @brief the precedence parser itself, prec_parse and prec_parse_tail both end up here
+ *
+ * @param parser parser to use
+ * @param first_operand_consumed true when the caller already ate the first identifier
+ * @return true if the expression was valid
+ */
+static bool prec_parse_from(syntax_parser_t *parser, bool first_operand_consumed) {
 	if (parser == NULL || parser->failed) {
 		return false;
 	}
@@ -639,6 +658,16 @@ static bool prec_parse(syntax_parser_t *parser) {
 	if (!prec_stack_insert(parser, &stack, 0,
 	                       (prec_item_t){.kind = PREC_ITEM_TERMINAL, .terminal = PREC_END})) {
 		goto cleanup;
+	}
+
+	// the eaten identifier is shifted like any operand would be, end symbol vs id is a less than
+	if (first_operand_consumed) {
+		if (!prec_stack_insert(parser, &stack, 1, (prec_item_t){.kind = PREC_ITEM_HANDLE}) ||
+		    !prec_stack_insert(parser, &stack, 2,
+		                       (prec_item_t){.kind = PREC_ITEM_TERMINAL, .terminal = PREC_ID})) {
+			goto cleanup;
+		}
+		last = PREC_ID;
 	}
 
 	// compare topmost terminal with incoming symbol in the table, then shift reduce or fail
@@ -689,6 +718,10 @@ cleanup:
 	free(stack.items);
 	return result;
 }
+
+static bool prec_parse(syntax_parser_t *parser) { return prec_parse_from(parser, false); }
+
+static bool prec_parse_tail(syntax_parser_t *parser) { return prec_parse_from(parser, true); }
 
 /** Public expression entry point; delimiters are left for the caller to consume. */
 bool syntax_parse_expression(syntax_parser_t *parser) {
@@ -931,16 +964,25 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 		return true;
 	}
 
-	// second token tells assignment apart from an expression that starts with the same name
-	const token_t *next = syntax_parser_next(parser);
-	if (token->type == TOKEN_IDENTIFIER && next != NULL && next->type == TOKEN_ASSIGN) {
-		// semantic analyser: report assignment target here
-		if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_ASSIGN) ||
-		    !syntax_parse_expression(parser)) {
+	// ID <id_stmt> like in parse_statement, eat the name first and then decide
+	if (token->type == TOKEN_IDENTIFIER) {
+		// semantic analyser: the name is the assignment target or the first operand, known after the next
+		// token
+		if (!syntax_parser_advance(parser)) {
 			return false;
 		}
-		// semantic analyser: assignment done
-		return true;
+		bool assign = false;
+		if (!syntax_parser_accept(parser, TOKEN_ASSIGN, &assign)) {
+			return false;
+		}
+		if (assign) {
+			if (!syntax_parse_expression(parser)) {
+				return false;
+			}
+			// semantic analyser: assignment done
+			return true;
+		}
+		return prec_parse_tail(parser);
 	}
 	return syntax_parse_expression(parser);
 }
@@ -1033,8 +1075,9 @@ static bool parse_value(syntax_parser_t *parser) {
 /**
  * @brief parses for loop generator, loop variable then left arrow then source
  *
- * source is one expression, ranges with to until and by are range operators in the table
- * so a List value works as source too for LISTS
+ * grammar, <generator> -> ID LEFT_ARROW expr <gen_tail>
+ * <gen_tail> -> <range> expr <step> | eps, eps is when the source is a List for LISTS
+ * <range> -> to | until, <step> -> by expr | eps
  *
  * @param parser parser sitting on the loop variable
  * @return true on success
@@ -1045,8 +1088,30 @@ static bool parse_generator(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	return syntax_parser_advance(parser) && syntax_parser_expect(parser, TOKEN_LEFT_ARROW) &&
-	       syntax_parse_expression(parser);
+	// semantic analyser: report the loop variable name here
+	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_LEFT_ARROW) ||
+	    !syntax_parse_expression(parser)) {
+		return false;
+	}
+
+	// expression parser stops at to and until outside parens, so the range is parsed here
+	token = syntax_parser_current(parser);
+	if (!token_is_identifier(token, "to") && !token_is_identifier(token, "until")) {
+		// semantic analyser: the source is a List
+		return true;
+	}
+	// semantic analyser: range start done, report whether its to or until here
+	if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser)) {
+		return false;
+	}
+	// semantic analyser: range end done
+	if (token_is_identifier(syntax_parser_current(parser), "by")) {
+		if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser)) {
+			return false;
+		}
+		// semantic analyser: step done
+	}
+	return true;
 }
 
 /** Parse zero or more inline IF guards. */
@@ -1182,18 +1247,27 @@ static bool parse_statement(syntax_parser_t *parser) {
 		return true;
 	case TOKEN_IF:
 		return parse_if(parser);
-	case TOKEN_IDENTIFIER:
-		// name then assign is an assignment, anything else starting with a name is an expression statement
-		if (syntax_parser_next(parser) != NULL && syntax_parser_next(parser)->type == TOKEN_ASSIGN) {
-			// semantic analyser: report assignment target here
-			if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_ASSIGN) ||
-			    !parse_value(parser)) {
+	case TOKEN_IDENTIFIER: {
+		// grammar rules 32 to 35, ID <id_stmt>, the name is eaten first
+		// then assign means assignment, anything else is the rest of an expression statement (expr_tail)
+		// semantic analyser: the name is the assignment target or the first operand, known after the next
+		// token
+		if (!syntax_parser_advance(parser)) {
+			return false;
+		}
+		bool assign = false;
+		if (!syntax_parser_accept(parser, TOKEN_ASSIGN, &assign)) {
+			return false;
+		}
+		if (assign) {
+			if (!parse_value(parser)) {
 				return false;
 			}
 			// semantic analyser: assignment done
 			return true;
 		}
-		return syntax_parse_expression(parser) && parse_stmt_end(parser);
+		return prec_parse_tail(parser) && parse_stmt_end(parser);
+	}
 	default:
 		if (!expression_start(token->type)) {
 			parser->failed = true;
