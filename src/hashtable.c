@@ -57,7 +57,7 @@ htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *
 			invalid_entry = cur_entry;
 
 		if (offset >= (int)table->size) { // TODO: update to a custom logging solution?
-			fprintf(stderr, "htbl_find_entry: table size has been exceeded!\n");
+			fprintf(stderr, "hashtable_find_entry: table size exceeded!\n");
 			if (entry_index != NULL)
 				*entry_index = table->size;
 			return NULL;

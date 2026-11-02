@@ -90,7 +90,7 @@ typedef enum HashtableStatusCode {
    This time the table survives this horrifying event; the same could not be said for any of the
    elements. Their electrons will be forever remembered by the memory frame(s) that stored them.
 
-   @param hash_table The table whose entries to clear. Type must be @see DEFTYPE_HASHTABLE().
+   @param hash_table The table whose entries to clear. Type must be that of @see DEFTYPE_HASHTABLE().
    @returns HTBLSTAT_OK on success or HTBLSTAT_BAD_ARG if argument is invalid.
 */
 #define HTBL_CLEAR(hash_table) hashtable_clear((hash_table).table)
@@ -137,7 +137,7 @@ typedef enum HashtableStatusCode {
 		const bool htbl_retrieve_key_exists = hashtable_exists((hash_table).table, (key));                   \
 		((htbl_retrieve_key_exists ? (var_name) = *(__typeof__((hash_table).payload))hashtable_retrieve(     \
 		                                 (hash_table).table, (key))                                          \
-		                           : (__typeof__(*(hash_table).payload)){0}),                                \
+		                           : (typeof(*(hash_table).payload)){0}),                                \
 		 htbl_retrieve_key_exists);                                                                          \
 	})
 

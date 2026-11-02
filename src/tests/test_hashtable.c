@@ -15,55 +15,294 @@
 #include "../include/hashtable_impl.h"
 
 #include "cmocka/cmocka.h"
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#define EXEC_TEST_CATEGORY(name, tests)                                                                      \
+	do {                                                                                                     \
+		printf("\n[    " name "    ]\n");                                                                    \
+		test_results |= (cmocka_run_group_tests_name((name), (tests), NULL, NULL));                          \
+	} while (0)
 
 DEFTYPE_HASHTABLE(unsigned long) htbl_ulong_t;
 
-static void test_return_codes(void **state) {
+/*===============
+  HTBL_INIT tests
+  ===============*/
+static htbl_ulong_t null_table = {.table = NULL};
+static void htbl_init_returns(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+
+	assert_int_equal(hashtable_init(NULL, 64), HTBLSTAT_BAD_ARG);
+	assert_int_equal(HTBL_INIT(table, 0), HTBLSTAT_BAD_ARG);
+}
+
+static void htbl_init_single(void **state) {
 	(void)state;
 
-	print_message("  Testing return codes of htbl_init\n");
-	htbl_ulong_t null_table = {.table = NULL};
-	htbl_ulong_t valid_table;
-	HTBL_INIT(valid_table, 12);
-	assert_int_equal(HTBL_INIT(valid_table, 0), HTBLSTAT_BAD_ARG);
-	assert_int_equal(hashtable_init(NULL, 12), HTBLSTAT_BAD_ARG);
+	htbl_ulong_t table;
+	assert_int_equal(HTBL_INIT(table, 64), HTBLSTAT_OK);
 
-	print_message("  Testing returns of htbl_free and htbl_clear\n");
+	assert_uint_equal(table.table->size, 64);
+	assert_uint_equal(table.table->count, 0);
+	for (size_t i = 0; i < table.table->size; i++)
+		assert_null(table.table->array[i]);
+
+	free(table.table);
+}
+
+/*===============
+  HTBL_FREE tests
+  ===============*/
+static void htbl_free_returns(void **state) {
+	(void)state;
+
 	assert_int_equal(HTBL_FREE(null_table), HTBLSTAT_BAD_ARG);
 	assert_int_equal(hashtable_free(NULL), HTBLSTAT_BAD_ARG);
+}
+
+static void htbl_free_nullifies_arg(void **state) {
+	(void)state;
+
+	htbl_ulong_t table;
+	HTBL_INIT(table, 64);
+
+	assert_int_equal(HTBL_FREE(table), HTBLSTAT_OK);
+	assert_null(table.table);
+}
+
+/*================
+  HTBL_CLEAR tests
+  ================*/
+static void htbl_clear_returns(void **state) {
+	(void)state;
+
 	assert_int_equal(HTBL_CLEAR(null_table), HTBLSTAT_BAD_ARG);
 	assert_int_equal(hashtable_clear(NULL), HTBLSTAT_BAD_ARG);
+}
 
-	print_message("  Testing returns of htbl_insert\n");
-	unsigned long data = 21;
-	assert_int_equal(HTBL_INSERT(null_table, "Hi", &data), HTBLSTAT_BAD_ARG);
-	assert_int_equal(hashtable_insert(&valid_table.table, "Hi", NULL, 21), HTBLSTAT_BAD_ARG);
-	assert_int_equal(hashtable_insert(&valid_table.table, "Hi", &data, 0), HTBLSTAT_BAD_ARG);
-	assert_int_equal(HTBL_INSERT(valid_table, NULL, &data), HTBLSTAT_BAD_ARG);
-	assert_int_equal(HTBL_INSERT(valid_table, "\0", &data), HTBLSTAT_BAD_ARG);
-	assert_uint_equal(valid_table.table->count, 0);
+// TODO: add clear tests after insertion is tested
 
-	print_message("  Testing returns of htbl_delete\n");
-	assert_int_equal(HTBL_DELETE(null_table, "Hi"), HTBLSTAT_BAD_ARG);
-	assert_int_equal(HTBL_DELETE(valid_table, "\0"), HTBLSTAT_BAD_ARG);
-	assert_int_equal(HTBL_DELETE(valid_table, "Hi"), HTBLSTAT_OK);
+/*=================
+  HTBL_INSERT tests
+  =================*/
+static void htbl_insert_returns(void **state) {
+	(void)state;
+	unsigned long nuhuh = 0;
+	htbl_ulong_t table;
 
-	print_message("  Testing returns of htbl_exists and htbl_retrieve\n");
-	assert_false(HTBL_EXISTS(null_table, "Hi"));
-	assert_false(HTBL_EXISTS(valid_table, "Hi"));
-	assert_false(HTBL_EXISTS(valid_table, NULL));
-	assert_false(HTBL_EXISTS(valid_table, "\0"));
+	assert_int_equal(HTBL_INSERT(null_table, "Glimpse of light", &nuhuh), HTBLSTAT_BAD_ARG);
+	assert_int_equal(HTBL_INSERT(table, NULL, &nuhuh), HTBLSTAT_BAD_ARG);
+	assert_int_equal(HTBL_INSERT(table, "", &nuhuh), HTBLSTAT_BAD_ARG);
+	assert_int_equal(HTBL_INSERT(table, "comes shining through", NULL), HTBLSTAT_BAD_ARG);
+}
 
-	unsigned long retrieve = 69420;
-	assert_false(HTBL_RETRIEVE(null_table, "Hi", retrieve));
-	assert_false(HTBL_RETRIEVE(valid_table, "Nope", retrieve));
-	assert_uint_equal(retrieve, 69420);
+static void htbl_insert_single(void **state) {
+	(void)state;
+	unsigned long data = 5;
+	htbl_ulong_t table;
 
-	assert_int_equal(HTBL_FREE(null_table), HTBLSTAT_BAD_ARG);
-	assert_int_equal(hashtable_free(NULL), HTBLSTAT_BAD_ARG);
-	HTBL_FREE(valid_table);
+	assert_int_equal(HTBL_INIT(table, 64), HTBLSTAT_OK);
+
+	assert_int_equal(HTBL_INSERT(table, "this waking dream", &data), HTBLSTAT_OK);
+	assert_uint_equal(table.table->count, 1);
+	assert_uint_equal(table.table->size, 64); /* better not be resizing right now */
+
+	bool found = false;
+	size_t index = 0; /* for cleanup */
+	for (size_t i = 0; i < table.table->size && !found; i++) {
+		if (table.table->array[i] != NULL) {
+			found = true;
+			index = i;
+		}
+	}
+	assert_true(found);
+	assert_uint_equal((unsigned long)(*table.table->array[index]->data), 5);
+	assert_string_equal(table.table->array[index]->key, "this waking dream");
+
+	free((char *)table.table->array[index]->key);
+	free(table.table->array[index]);
+	free(table.table);
+}
+
+static void htbl_insert_4_non_synonyms(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+
+	HTBL_INIT(table, 64);
+
+	static char *keys[] = {"chaos is", "the grain", "on which", "those bastards feed"};
+	static unsigned long data[] = {4, 6, 8, 10};
+	const size_t key_count = sizeof(keys) / sizeof(*keys);
+
+	for (size_t i = 0; i < key_count; i++) {
+		assert_int_equal(HTBL_INSERT(table, keys[i], &data[i]), HTBLSTAT_OK);
+	}
+	assert_uint_equal(table.table->size, 64);
+	assert_uint_equal(table.table->count, 4);
+
+	int found_count = 0;
+	for (size_t i = 0; i < table.table->size; i++) {
+		htbl_entry_t *entry = table.table->array[i];
+		if (entry == NULL)
+			continue;
+
+		for (size_t j = 0; j < key_count; j++) {
+			if (strcmp(entry->key, keys[j]) == 0) {
+				assert_uint_equal((unsigned long)(*entry->data), data[j]);
+				found_count++;
+			}
+		}
+	}
+	assert_int_equal(found_count, 4);
+
+	HTBL_FREE(table);
+}
+
+static void htbl_insert_4_synonyms_sequential(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+	HTBL_INIT(table, 64);
+
+	/* this (probably) guarantees that the keys will immediately follow each other in the array */
+	static char *keys[] = {"a", "b", "c", "d"};
+	static unsigned long data[] = {1, 1, 2, 3};
+	const size_t key_count = sizeof(keys) / sizeof(*keys);
+
+	for (size_t i = 0; i < key_count; i++) {
+		assert_int_equal(HTBL_INSERT(table, keys[i], &data[i]), HTBLSTAT_OK);
+	}
+	assert_uint_equal(table.table->size, 64);
+	assert_uint_equal(table.table->count, 4);
+
+	int found_count = 0;
+	int last_index = -1;
+	for (size_t i = 0; i < table.table->size; i++) {
+		htbl_entry_t *entry = table.table->array[i];
+		if (entry == NULL)
+			continue;
+		if (last_index == -1)
+			last_index = i - 1;
+
+		for (size_t j = 0; j < key_count; j++) {
+			if (strcmp(entry->key, keys[j]) == 0) {
+				assert_uint_equal((unsigned long)(*entry->data), data[j]);
+				assert_int_equal(last_index + 1, (int)i); /* last + 1 must be current */
+				found_count++;
+			}
+		}
+		last_index = i;
+	}
+	assert_int_equal(found_count, 4);
+
+	HTBL_FREE(table);
+}
+
+/*=================
+  HTBL_DELETE tests
+  =================*/
+static void htbl_delete_returns(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+	HTBL_INIT(table, 74);
+
+	assert_int_equal(HTBL_DELETE(null_table, "hello"), HTBLSTAT_BAD_ARG);
+	assert_int_equal(hashtable_delete(NULL, "nope"), HTBLSTAT_BAD_ARG);
+	assert_int_equal(HTBL_DELETE(table, ""), HTBLSTAT_BAD_ARG);
+
+	HTBL_FREE(table);
+}
+
+static void htbl_delete_single(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+	HTBL_INIT(table, 69);
+
+	unsigned long data = 4;
+	HTBL_INSERT(table, "la bomba", &data);
+	size_t index = 0;
+	for (size_t i = 0; i < table.table->size; i++) {
+		if (table.table->array[i] != NULL) {
+			index = i;
+			break;
+		}
+	}
+
+	assert_int_equal(HTBL_DELETE(table, "la bomba"), HTBLSTAT_OK);
+	htbl_entry_t *exploded_entry = table.table->array[index];
+	assert_true(exploded_entry->key[0] == '\0');
+	assert_uint_equal((unsigned long)(*exploded_entry->data), data); /* make sure entry still exists */
+
+	assert_int_equal(HTBL_DELETE(table, "la bomba"), HTBLSTAT_OK); /* kinda cringe, idk */
+	
+	HTBL_FREE(table);
+}
+
+/*=================
+  HTBL_EXISTS tests
+  =================*/
+static void htbl_exists_returns(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+
+	HTBL_INIT(table, 88);
+
+	assert_false(HTBL_EXISTS(null_table, "nope"));
+	assert_false(HTBL_EXISTS(table, ""));
+
+	HTBL_FREE(table);
+}
+
+static void htbl_exists_single(void **state) {
+    	(void)state;
+	htbl_ulong_t table;
+
+	HTBL_INIT(table, 62);
+	unsigned long data = 62;
+	HTBL_INSERT(table, "I do, in fact, exist", &data);
+
+	assert_true(HTBL_EXISTS(table, "I do, in fact, exist"));
+
+	HTBL_FREE(table);
+}
+
+/*===================
+  HTBL_RETRIEVE tests
+  ===================*/
+static void htbl_retrieve_returns(void **state) {
+	(void)state;
+	unsigned long nuhuh = 0;
+	htbl_ulong_t table;
+	HTBL_INIT(table, 35);
+
+	assert_false(HTBL_RETRIEVE(null_table, "hi", nuhuh));
+	assert_false(HTBL_RETRIEVE(table, "", nuhuh));
+
+	HTBL_FREE(table);
+}
+
+static void hashtable_find_entry_returns(void **state) {
+	(void)state;
+	size_t entry_index;
+
+	assert_null(hashtable_find_entry(NULL, "nope", NULL, HTBL_FIND_VALID));
+	assert_null(hashtable_find_entry(NULL, "nope", NULL, HTBL_FIND_INVALID));
+	assert_null(hashtable_find_entry(NULL, "nope", &entry_index, HTBL_FIND_VALID));
+	assert_uint_equal(entry_index, ULONG_MAX);
+	entry_index = 0;
+	assert_null(hashtable_find_entry(NULL, "nope", &entry_index, HTBL_FIND_INVALID));
+	assert_uint_equal(entry_index, ULONG_MAX);
+
+	htbl_ulong_t table;
+	HTBL_INIT(table, 33);
+
+	assert_null(hashtable_find_entry(table.table, NULL, NULL, HTBL_FIND_INVALID));
+	assert_null(hashtable_find_entry(table.table, NULL, NULL, HTBL_FIND_VALID));
+
+	HTBL_FREE(table);
 }
 
 static void test_find_entry(void **state) {
@@ -123,80 +362,21 @@ static void test_find_entry(void **state) {
 	HTBL_FREE(table);
 }
 
-static void test_init_free(void **state) {
-	(void)state;
-
-	htbl_ulong_t new_table;
-	assert_int_equal(HTBL_INIT(new_table, 0), HTBLSTAT_BAD_ARG);
-
-	const size_t new_size = 19;
-	assert_int_equal(HTBL_INIT(new_table, new_size), HTBLSTAT_OK);
-	assert_uint_equal(new_table.table->size, new_size);
-	assert_uint_equal(new_table.table->count, 0);
-
-	for (size_t i = 0; i < new_table.table->size; i++) {
-		assert_null(new_table.table->array[i]);
-	}
-
-	assert_int_equal(HTBL_FREE(new_table), HTBLSTAT_OK);
-	assert_null(new_table.table);
-}
-
-static void test_insert_retrieve(void **state) {
-	(void)state;
-
-	htbl_ulong_t table;
-	HTBL_INIT(table, 16);
-
-	unsigned long value = 42;
-	assert_int_equal(HTBL_INSERT(table, "Hello World", &value), HTBLSTAT_OK);
-	assert_uint_equal(table.table->count, 1);
-
-	unsigned long dest = 0;
-	assert_true(HTBL_RETRIEVE(table, "Hello World", dest));
-	assert_uint_equal(dest, value);
-	assert_false(HTBL_RETRIEVE(table, "Nonexistent", dest));
-
-	HTBL_FREE(table);
-}
-
-static void test_clear(void **state) {
-	(void)state;
-
-	htbl_ulong_t table;
-	const size_t new_size = 21;
-	HTBL_INIT(table, new_size);
-
-	const char *keys[] = {"Electro", "Motive", "Division", "Super Duty", "70 Series"};
-	const size_t key_count = sizeof(keys) / sizeof(char *);
-	for (size_t i = 0; i < key_count; i++)
-		assert_int_equal(HTBL_INSERT(table, keys[i], &i), HTBLSTAT_OK);
-	assert_uint_equal(table.table->count, key_count);
-
-	assert_int_equal(HTBL_DELETE(table, "Motive"), HTBLSTAT_OK);
-	assert_false(HTBL_EXISTS(table, "Motive"));
-
-	assert_int_equal(HTBL_CLEAR(table), HTBLSTAT_OK);
-	for (size_t i = 0; i < key_count; i++)
-		assert_false(HTBL_EXISTS(table, keys[i]));
-	assert_uint_equal(table.table->count, 0);
-	assert_uint_equal(table.table->size, new_size);
-
-	HTBL_FREE(table);
-}
-
-static void test_resize(void **state) {
+/*========================
+  Advanced hashtable tests
+  ========================*/
+static void htbl_adv_auto_resize(void **state) {
 	(void)state;
 
 	htbl_ulong_t table;
 	const size_t init_size = 6;
-	HTBL_INIT(table, init_size);
+	assert_int_equal(HTBL_INIT(table, init_size), HTBLSTAT_OK);
 
 	const char *keys[] = {"Resistance", "Reactance", "Impedance", "Conductance", "Susceptance", "Admittance"};
 	const size_t key_count = sizeof(keys) / sizeof(char *);
 	const size_t resize_count = (const size_t)(0.64f * init_size) + 1; /* This factor is statically defined,
-	                                                                  * so it must be manually copied
-	                                                                  * here */
+	                                                                    * so it must be manually copied
+	                                                                    * here */
 	for (size_t i = 0; i < key_count; i++) {
 		assert_int_equal(HTBL_INSERT(table, keys[i], &i), HTBLSTAT_OK);
 
@@ -215,7 +395,7 @@ static void test_resize(void **state) {
 	HTBL_FREE(table);
 }
 
-static void test_resize_optimization(void **state) {
+static void htbl_adv_resize_tombstone_optimization(void **state) {
 	(void)state;
 
 	htbl_ulong_t table;
@@ -289,14 +469,44 @@ static void test_insert_update_semantics(void **state) {
 }
 
 int main(void) {
-	const struct CMUnitTest tests[] = {cmocka_unit_test(test_return_codes),
-	                                   cmocka_unit_test(test_init_free),
-	                                   cmocka_unit_test(test_insert_retrieve),
-	                                   cmocka_unit_test(test_clear),
-	                                   cmocka_unit_test(test_resize),
-	                                   cmocka_unit_test(test_find_entry),
-	                                   cmocka_unit_test(test_resize_optimization),
-	                                   cmocka_unit_test(test_insert_update_semantics)};
+	int test_results = 0;
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	struct CMUnitTest htbl_init_tests[] = {
+	    cmocka_unit_test(htbl_init_returns),
+	    cmocka_unit_test(htbl_init_single),
+	    cmocka_unit_test(htbl_free_returns),
+	    cmocka_unit_test(htbl_free_nullifies_arg),
+	};
+
+	struct CMUnitTest htbl_insert_tests[] = {
+	    cmocka_unit_test(htbl_insert_returns),
+	    cmocka_unit_test(htbl_insert_single),
+	    cmocka_unit_test(htbl_insert_4_non_synonyms),
+	    cmocka_unit_test(htbl_insert_4_synonyms_sequential),
+	};
+	struct CMUnitTest htbl_delete_tests[] = {
+	    cmocka_unit_test(htbl_delete_returns),
+	    cmocka_unit_test(htbl_delete_single),
+	    cmocka_unit_test(htbl_clear_returns),
+	};
+
+	struct CMUnitTest htbl_exists_tests[] = {
+	    cmocka_unit_test(htbl_exists_returns),
+	    cmocka_unit_test(htbl_exists_single),
+	    cmocka_unit_test(htbl_retrieve_returns),
+	    cmocka_unit_test(hashtable_find_entry_returns),
+	};
+
+	struct CMUnitTest htbl_adv_tests[] = {
+	    cmocka_unit_test(htbl_adv_auto_resize),
+	    cmocka_unit_test(htbl_adv_resize_tombstone_optimization),
+	};
+
+	EXEC_TEST_CATEGORY("Hashtable alloc/dealloc", htbl_init_tests);
+	EXEC_TEST_CATEGORY("Hashtable basic entry insertion", htbl_insert_tests);
+	EXEC_TEST_CATEGORY("Hashtable cleanup", htbl_delete_tests);
+	EXEC_TEST_CATEGORY("Hashtable basic entry retrieval", htbl_exists_tests); /* Includes HTBL_EXISTS tests */
+	EXEC_TEST_CATEGORY("Hashtable advanced", htbl_adv_tests);		  /* a bunch of random sh*t */
+
+	return test_results;
 }
