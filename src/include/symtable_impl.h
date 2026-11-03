@@ -44,7 +44,6 @@ struct Symtable {
   FUNCTIONS
   =========*/
 
-#ifndef UNIT_UNDER_TEST
 /**
    Erase the contents of a given scope.
 
@@ -69,7 +68,14 @@ symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size
    @param scope The scope to push onto the stack.
    @returns SYMTSTAT_OK on successful push, otherwise an error.
 */
-inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope);
+inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope) {
+	if (stack_top == NULL || scope == NULL)
+		return SYMTSTAT_BAD_ARG;
+
+	scope->prev = *stack_top; /* Remember the old top elemenet */
+	(*stack_top) = scope;     /* Move the top onto the new element */
+	return SYMTSTAT_OK;
+}
 
 /**
    Pop a scope off of the given scope stack and save its address.
@@ -78,14 +84,31 @@ inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t 
    @param[out] scope An address of a variable in which to store the popped scope address.
    @returns SYMTSTAT_OK on success, SYMTSTAT_NO_SCOPE if the stack is empty, or an error.
  */
-inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope);
+inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope) {
+	if (stack_top == NULL || scope == NULL)
+		return SYMTSTAT_BAD_ARG;
+
+	if (*stack_top == NULL)
+		return SYMTSTAT_NO_SCOPE;
+
+	(*scope) = *stack_top;       /* Save the top element */
+	*stack_top = (*scope)->prev; /* Move stack top to the next (lower) element */
+	return SYMTSTAT_OK;
+}
 
 /**
    Free a given scope from memory.
 
    @param scope The scope to remove from memory. If NULL, this does nothing.
 */
-inline void symt_free_scope(symt_scope_t *scope);
+inline void symt_free_scope(symt_scope_t *scope) {
+	if (scope == NULL)
+		return;
+	HTBL_FREE(scope->scope);
+	free(scope);
+}
+
+#ifndef UNIT_UNDER_TEST
 
 /* In case of missing -O2 flag or some other goofy compilation stuff */
 extern inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope);

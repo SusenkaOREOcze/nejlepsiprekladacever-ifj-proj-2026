@@ -15,6 +15,90 @@
 #include "cmocka/cmocka.h"
 #include <string.h>
 
+#define EXEC_TEST_CATEGORY(name, tests)                                                                      \
+	do {                                                                                                     \
+		printf("\n[    " name "    ]\n");                                                                    \
+		test_results |= (cmocka_run_group_tests_name((name), (tests), NULL, NULL));                          \
+	} while (0)
+
+/*=====================
+  Helper function tests
+  =====================*/
+static void symt_alloc_scope_returns(void **state) {
+	(void)state;
+	symt_scope_t *scope = NULL;
+
+	assert_int_equal(symt_alloc_scope(NULL, 32), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_alloc_scope(&scope, 0), SYMTSTAT_BAD_ARG);
+}
+
+static void symt_alloc_scope_single(void **state) {
+	(void)state;
+
+	symt_scope_t *scope = NULL;
+	assert_int_equal(symt_alloc_scope(&scope, 14), SYMTSTAT_OK);
+	assert_null(scope->prev);
+
+	HTBL_FREE(scope->scope);
+	free(scope);
+}
+
+static void symt_free_scope_test(void **state) {
+	(void)state;
+
+	symt_scope_t *scope = NULL;
+	symt_alloc_scope(&scope, 13);
+
+	symt_free_scope(scope); /* address sanitizer should catch the failure here */
+}
+
+static void symt_push_scope_returns(void **state) {
+	(void)state;
+	symt_scope_t *scope = NULL;
+	assert_int_equal(symt_push_scope(NULL, scope), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_push_scope(&scope, scope), SYMTSTAT_BAD_ARG); /* horrifying but it works */
+}
+
+static void symt_push_scope_empty_stack(void **state) {
+	(void)state;
+	symt_scope_t *scope = NULL;
+
+	symt_scope_t *new_scope = NULL;
+	symt_alloc_scope(&new_scope, 20);
+
+	assert_int_equal(symt_push_scope(&scope, new_scope), SYMTSTAT_OK);
+	assert_ptr_equal(scope, new_scope);
+	assert_null(scope->prev);
+
+	symt_free_scope(scope);
+}
+
+static void symt_push_scope_full_stack(void **state) {
+	(void)state;
+		symt_scope_t *scope = NULL;
+	symt_alloc_scope(&scope, 156); /* main scope */
+	symt_scope_t *const prev_top = scope;
+
+	symt_scope_t *new_scope = NULL;
+	symt_alloc_scope(&new_scope, 20);
+
+	assert_int_equal(symt_push_scope(&scope, new_scope), SYMTSTAT_OK);
+	assert_ptr_equal(scope, new_scope);
+	assert_non_null(scope->prev);
+	assert_ptr_equal(scope->prev, prev_top);
+
+	symt_free_scope(scope->prev);
+	symt_free_scope(scope);
+}
+
+static void symt_pop_scope_returns(void **state) { (void)state; }
+
+static void symt_pop_scope_empty_stack(void **state) { (void)state; }
+
+static void symt_pop_scope_full_stack(void **state) { (void)state; }
+
+static void symt_clear_scope_test(void **state) { (void)state; }
+
 void test_allocation(void **state) {
 	(void)state;
 
@@ -175,12 +259,16 @@ void test_symbol_io_shadowing(void **state) {
 }
 
 int main(void) {
-	const struct CMUnitTest tests[] = {
-	    cmocka_unit_test(test_allocation),
-	    cmocka_unit_test(test_scope_depth_changing),
-	    cmocka_unit_test(test_symbol_io_single_scope),
-	    cmocka_unit_test(test_symbol_io_shadowing),
+	int test_results = 0;
+
+	struct CMUnitTest helper_func_tests[] = {
+	    cmocka_unit_test(symt_alloc_scope_returns), cmocka_unit_test(symt_alloc_scope_single),
+	    cmocka_unit_test(symt_free_scope_test), cmocka_unit_test(symt_push_scope_returns),
+	    cmocka_unit_test(symt_push_scope_empty_stack),
+	    cmocka_unit_test(symt_push_scope_full_stack),
 	};
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	EXEC_TEST_CATEGORY("symt helper functions", helper_func_tests);
+
+	return test_results;
 }

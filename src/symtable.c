@@ -35,34 +35,6 @@ symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size
 	return SYMTSTAT_OK;
 }
 
-inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope) {
-	if (stack_top == NULL || scope == NULL)
-		return SYMTSTAT_BAD_ARG;
-
-	scope->prev = *stack_top; /* Remember the old top elemenet */
-	(*stack_top) = scope;     /* Move the top onto the new element */
-	return SYMTSTAT_OK;
-}
-
-inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope) {
-	if (stack_top == NULL || scope == NULL)
-		return SYMTSTAT_BAD_ARG;
-
-	if (*stack_top == NULL)
-		return SYMTSTAT_NO_SCOPE;
-
-	(*scope) = *stack_top;       /* Save the top element */
-	*stack_top = (*scope)->prev; /* Move stack top to the next (lower) element */
-	return SYMTSTAT_OK;
-}
-
-inline void symt_free_scope(symt_scope_t *scope) {
-	if (scope == NULL)
-		return;
-	HTBL_FREE(scope->scope);
-	free(scope);
-}
-
 symt_stat_t symt_clear_scope(symt_scope_t *const scope) {
 	if (scope == NULL)
 		return SYMTSTAT_BAD_ARG;
@@ -211,6 +183,18 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table) {
 	sym_table->scope_depth--;
 
 	return result;
+}
+
+/*==========
+  PREDICATES
+  ==========*/
+bool symt_exists_in_current_scope(const symt_t *sym_table, const char *ident) {
+	if (sym_table == NULL || ident == NULL || ident[0] == '\0')
+		return false;
+	if (sym_table->scope_top == NULL)
+		return false;
+
+	return HTBL_EXISTS(sym_table->scope_top->scope, ident);
 }
 
 /*=============
