@@ -26,8 +26,14 @@
 */
 typedef struct SymtableSymbol {
 	symt_data_type_t data_type;
-	bool mutable; //!< States if this is symbol is of the IFJ26 storage class var (true) or val (false).
-	unsigned long long uid; //!< Unique identfier of this specific symbol.
+	/**
+	   States whether this symbol is of the IFJ26 storage class `var` (true) or `val` (false).
+	*/
+	bool mutable;
+	/**
+	   The symbol's unique identifier, to distinguish same symbol names in different scopes.
+	*/
+	unsigned long long uid;
 } symt_symbol_t;
 
 /**
@@ -85,7 +91,7 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table);
 
    @param sym_table The symbol table which to inspect.
    @param ident The name of the symbol which you (most likely) hope isn't there.
-   @returns true if the symbol exists or false if the symbol doesn't exist or if the arguments are FUBAR
+   @returns true if the symbol exists, or false if the symbol doesn't exist or if the arguments are FUBAR
    (including the absense of a scope).
 */
 bool symt_exists_in_current_scope(const symt_t *sym_table, const char *ident);

@@ -21,6 +21,8 @@
 		test_results |= (cmocka_run_group_tests_name((name), (tests), NULL, NULL));                          \
 	} while (0)
 
+static symt_t *valid_table = NULL;
+
 /*=====================
   Helper function tests
   =====================*/
@@ -75,7 +77,7 @@ static void symt_push_scope_empty_stack(void **state) {
 
 static void symt_push_scope_full_stack(void **state) {
 	(void)state;
-		symt_scope_t *scope = NULL;
+	symt_scope_t *scope = NULL;
 	symt_alloc_scope(&scope, 156); /* main scope */
 	symt_scope_t *const prev_top = scope;
 
@@ -91,14 +93,129 @@ static void symt_push_scope_full_stack(void **state) {
 	symt_free_scope(scope);
 }
 
-static void symt_pop_scope_returns(void **state) { (void)state; }
+static void symt_pop_scope_returns(void **state) {
+	(void)state;
 
-static void symt_pop_scope_empty_stack(void **state) { (void)state; }
+	symt_scope_t *scope_top = NULL;
+	symt_scope_t *scope = NULL;
 
-static void symt_pop_scope_full_stack(void **state) { (void)state; }
+	assert_int_equal(symt_pop_scope(NULL, &scope), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_pop_scope(&scope_top, NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_pop_scope(&scope_top, &scope), SYMTSTAT_NO_SCOPE);
+}
 
-static void symt_clear_scope_test(void **state) { (void)state; }
+static void symt_pop_scope_full_stack(void **state) {
+	(void)state;
+	symt_scope_t *scope_top = NULL;
+	symt_alloc_scope(&scope_top, 42);
+	symt_scope_t *const old_top = scope_top;
 
+	symt_scope_t *scope = NULL;
+	symt_alloc_scope(&scope, 42);
+	symt_scope_t *const old_local = scope;
+	symt_push_scope(&scope_top, scope);
+
+	scope = NULL;
+	assert_int_equal(symt_pop_scope(&scope_top, &scope),
+	                 SYMTSTAT_OK); /* scope will contain the local scope (last pushed scope) */
+
+	assert_non_null(scope);
+	assert_null(scope->prev);
+	assert_ptr_equal(old_local, scope); /* we got the same scope that we pushed */
+
+	assert_ptr_equal(old_top, scope_top); /* the scope bellow the popped one is the global (top) scope */
+	assert_null(scope_top->prev);
+
+	symt_free_scope(scope);
+	symt_free_scope(scope_top);
+}
+
+static void symt_clear_scope_test(void **state) {
+	(void)state;
+	symt_symbol_t symbol = {
+	    .data_type = SYMT_TYPE_UNIT,
+	    .mutable = false,
+	};
+
+	assert_int_equal(symt_clear_scope(NULL), SYMTSTAT_BAD_ARG);
+	symt_scope_t *scope_top = NULL;
+	symt_alloc_scope(&scope_top, 42);
+	HTBL_INSERT(scope_top->scope, "I know", &symbol);
+	HTBL_INSERT(scope_top->scope, "the pieces", &symbol);
+	HTBL_INSERT(scope_top->scope, "FIT", &symbol);
+
+	/* This should probably go in a separate test, but I cba */
+	assert_int_equal(symt_clear_scope(scope_top), SYMTSTAT_OK);
+	assert_false(HTBL_EXISTS(scope_top->scope, "I know"));
+	assert_false(HTBL_EXISTS(scope_top->scope, "the pieces"));
+	assert_false(HTBL_EXISTS(scope_top->scope, "FIT"));
+
+	symt_free_scope(scope_top);
+}
+
+/* FIXME: these tests must run after symt_init/free/insert/scope_depth tests */
+/*=====================
+  Symbol searching tests
+  =====================*/
+static void symt_exists_in_cs_returns(void **state) {
+	(void)state;
+
+	assert_false(symt_exists_in_current_scope(NULL, "hi"));
+	assert_false(symt_exists_in_current_scope(valid_table, NULL));
+	assert_false(symt_exists_in_current_scope(valid_table, ""));
+}
+
+static void symt_exists_in_cs_several_global_scope(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t symbol = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_INTEGER,
+	};
+	assert_uint_equal(table->scope_depth, 0);
+
+	symt_insert(table, "prkl0", &symbol);
+	symt_insert(table, "prkl1", &symbol);
+	symt_insert(table, "prkl2", &symbol);
+
+	assert_true(symt_exists_in_current_scope(table, "prkl0"));
+	assert_true(symt_exists_in_current_scope(table, "prkl1"));
+	assert_true(symt_exists_in_current_scope(table, "prkl2"));
+	assert_false(symt_exists_in_current_scope(table, "prkl3"));
+
+	symt_free(table);
+}
+
+static void symt_exists_in_cs_several_nested_scope(void **state) {
+	(void)state;
+
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t symbol = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_INTEGER,
+	};
+	assert_uint_equal(table->scope_depth, 0); /* global symbols */
+	symt_insert(table, "global0", &symbol);
+	symt_insert(table, "global1", &symbol);
+
+	symt_inc_scope_depth(table);
+	assert_uint_equal(table->scope_depth, 1); /* nested scope 1 symbols */
+	symt_insert(table, "local0", &symbol);
+	symt_insert(table, "local1", &symbol);
+
+	assert_true(symt_exists_in_current_scope(table, "local0"));
+	assert_true(symt_exists_in_current_scope(table, "local1"));
+	assert_false(symt_exists_in_current_scope(table, "local2"));
+
+	assert_false(symt_exists_in_current_scope(table, "global0"));
+	assert_false(symt_exists_in_current_scope(table, "global1"));
+
+	symt_free(table);
+}
+
+/* FIXME: old, pls fix :-) */
 void test_allocation(void **state) {
 	(void)state;
 
@@ -260,15 +377,31 @@ void test_symbol_io_shadowing(void **state) {
 
 int main(void) {
 	int test_results = 0;
+	valid_table = malloc(sizeof(*valid_table));
+	valid_table->scope_top = NULL;
+	valid_table->standby_top = NULL;
+	valid_table->uid_accum = 0;
+	valid_table->scope_depth = 0;
 
 	struct CMUnitTest helper_func_tests[] = {
-	    cmocka_unit_test(symt_alloc_scope_returns), cmocka_unit_test(symt_alloc_scope_single),
-	    cmocka_unit_test(symt_free_scope_test), cmocka_unit_test(symt_push_scope_returns),
-	    cmocka_unit_test(symt_push_scope_empty_stack),
-	    cmocka_unit_test(symt_push_scope_full_stack),
+	    cmocka_unit_test(symt_alloc_scope_returns),    cmocka_unit_test(symt_alloc_scope_single),
+	    cmocka_unit_test(symt_free_scope_test),        cmocka_unit_test(symt_push_scope_returns),
+	    cmocka_unit_test(symt_push_scope_empty_stack), cmocka_unit_test(symt_push_scope_full_stack),
+	    cmocka_unit_test(symt_pop_scope_returns),      cmocka_unit_test(symt_pop_scope_full_stack),
+	    cmocka_unit_test(symt_clear_scope_test),
 	};
 
-	EXEC_TEST_CATEGORY("symt helper functions", helper_func_tests);
+	EXEC_TEST_CATEGORY("Symtable helper functions", helper_func_tests);
 
+	/* TODO: ADD symtable interaction tests */
+
+	struct CMUnitTest symt_search_tests[] = {
+	    cmocka_unit_test(symt_exists_in_cs_returns),
+	    cmocka_unit_test(symt_exists_in_cs_several_global_scope),
+	    cmocka_unit_test(symt_exists_in_cs_several_nested_scope),
+	};
+	EXEC_TEST_CATEGORY("Symtable scope searching", symt_search_tests);
+
+	free(valid_table);
 	return test_results;
 }

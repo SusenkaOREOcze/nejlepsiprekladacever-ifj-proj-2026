@@ -48,7 +48,7 @@ struct Symtable {
    Erase the contents of a given scope.
 
    @param scope The scope to apply class B amnestics to.
-   @returns SYMTSTAT_OK on success, otherwise an error.
+   @returns SYMTSTAT_OK on success or SYMTSTAT_BAD_ARG if the arguments don't make sense.
  */
 symt_stat_t symt_clear_scope(symt_scope_t *const scope);
 
@@ -57,7 +57,8 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope);
 
    @param scope A pointer to the variable that shall hold the new scope's address.
    @param scope_size The initial size of the new scope (how many identifiers it can hold).
-   @returns SYMTSTAT_OK on success, or an error on failure.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_ARG if the arguments don't make sense or SYMTSTAT_BAD_ALLOC
+   on allocation failure.
 */
 symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size);
 
@@ -66,7 +67,7 @@ symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size
 
    @param stack_top The address of the pointer to the top of the stack.
    @param scope The scope to push onto the stack.
-   @returns SYMTSTAT_OK on successful push, otherwise an error.
+   @returns SYMTSTAT_OK on successful push or SYMTSTAT_BAD_ARG if the arguments don't make sense.
 */
 inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t *scope) {
 	if (stack_top == NULL || scope == NULL)
@@ -82,7 +83,8 @@ inline symt_stat_t symt_push_scope(symt_scope_t **const stack_top, symt_scope_t 
 
    @param stack_top The address of the pointer to the top of the stack.
    @param[out] scope An address of a variable in which to store the popped scope address.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_NO_SCOPE if the stack is empty, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_NO_SCOPE if the stack is empty or SYMTSTAT_BAD_ARG if the
+   arguments don't make sense.
  */
 inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t **const scope) {
 	if (stack_top == NULL || scope == NULL)
@@ -91,8 +93,9 @@ inline symt_stat_t symt_pop_scope(symt_scope_t **const stack_top, symt_scope_t *
 	if (*stack_top == NULL)
 		return SYMTSTAT_NO_SCOPE;
 
-	(*scope) = *stack_top;       /* Save the top element */
-	*stack_top = (*scope)->prev; /* Move stack top to the next (lower) element */
+	(*scope) = *stack_top;           /* Save the top element */
+	*stack_top = (*stack_top)->prev; /* Move stack top to the next (lower) element */
+	(*scope)->prev = NULL;		 /* Circumvent trolling */
 	return SYMTSTAT_OK;
 }
 
