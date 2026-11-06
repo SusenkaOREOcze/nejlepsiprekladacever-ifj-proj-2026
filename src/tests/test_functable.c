@@ -1151,96 +1151,69 @@ static void funct_insert_combined_update_def(void **state) {
 int main(void) {
 	int test_results = 0;
 
-	struct CMUnitTest tests_funct_init[] = {
+	struct CMUnitTest tests_funct_alloc[] = {
 	    cmocka_unit_test(funct_init_returns),
 	    cmocka_unit_test(funct_init_single),
-	};
-	struct CMUnitTest tests_funct_free[] = {
 	    cmocka_unit_test(funct_free_returns),
 	    cmocka_unit_test(funct_free_single),
 	};
 
-	EXEC_TEST_CATEGORY("funct_init", tests_funct_init);
-	EXEC_TEST_CATEGORY("funct_free", tests_funct_free);
+	EXEC_TEST_CATEGORY("Functable allocation", tests_funct_alloc);
 
-	struct CMUnitTest tests_funct_resize_type_array[] = {
+	struct CMUnitTest tests_funct_type_array_helpers[] = {
 	    cmocka_unit_test(funct_resize_type_array_returns),
 	    cmocka_unit_test(funct_resize_type_array_null_allocate),
-	};
-	struct CMUnitTest tests_funct_append_def_type[] = {
 	    cmocka_unit_test(funct_append_def_type_returns),
 	    cmocka_unit_test(funct_append_def_type_single),
 	    cmocka_unit_test(funct_append_def_type_resize),
-	};
-	struct CMUnitTest tests_funct_append_call_type[] = {
 	    cmocka_unit_test(funct_append_call_type_returns),
 	    cmocka_unit_test(funct_append_call_type_single),
 	    cmocka_unit_test(funct_append_call_type_resize),
 	};
-	EXEC_TEST_CATEGORY("funct_resize_type_array", tests_funct_resize_type_array);
-	EXEC_TEST_CATEGORY("funct_append_def_type", tests_funct_append_def_type);
-	EXEC_TEST_CATEGORY("funct_append_call_type", tests_funct_append_call_type);
+	EXEC_TEST_CATEGORY("Functable type array allocation", tests_funct_type_array_helpers);
 
-	struct CMUnitTest tests_funct_compare_sym_signatures[] = {
+	struct CMUnitTest tests_funct_symbol_helper_functions[] = {
 	    cmocka_unit_test(funct_compare_sym_signatures_returns),
 	    cmocka_unit_test(funct_compare_sym_signatures_by_call_sign),
 	    cmocka_unit_test(funct_compare_sym_signatures_by_def_sign),
-	};
-	struct CMUnitTest tests_funct_copy_update_symbol[] = {
 	    cmocka_unit_test(funct_copy_update_symbol_returns),
 	    cmocka_unit_test(funct_copy_update_symbol_field_sequence),
 	};
-	EXEC_TEST_CATEGORY("funct_compare_sym_signatures", tests_funct_compare_sym_signatures);
-	EXEC_TEST_CATEGORY("funct_copy_update_symbol", tests_funct_copy_update_symbol);
+	EXEC_TEST_CATEGORY("Functable symbol helpers", tests_funct_symbol_helper_functions);
 
-	struct CMUnitTest tests_funct_insert_begin[] = {
+	struct CMUnitTest tests_funct_insert[] = {
 	    cmocka_unit_test(funct_insert_begin_returns),
 	    cmocka_unit_test(funct_insert_begin_state_transition),
-	};
-	struct CMUnitTest tests_funct_insert_add_param[] = {
 	    cmocka_unit_test(funct_insert_add_param_returns),
 	    cmocka_unit_test(funct_insert_add_param_call_single),
 	    cmocka_unit_test(funct_insert_add_param_call_multi),
 	    cmocka_unit_test(funct_insert_add_param_def_single),
 	    cmocka_unit_test(funct_insert_add_param_def_multi),
-	};
-	struct CMUnitTest tests_funct_insert_end[] = {
 	    cmocka_unit_test(funct_insert_end_returns),
 	    cmocka_unit_test(funct_insert_end_undefined_symbol),
 	    cmocka_unit_test(funct_insert_end_single_function_call),
 	    cmocka_unit_test(funct_insert_end_single_function_def),
 	};
+	EXEC_TEST_CATEGORY("Functable symbol insert functions", tests_funct_insert);
 
-	EXEC_TEST_CATEGORY("funct_insert_begin", tests_funct_insert_begin);
-	EXEC_TEST_CATEGORY("funct_insert_add_param", tests_funct_insert_add_param);
-	EXEC_TEST_CATEGORY("funct_insert_end", tests_funct_insert_end);
-
-	struct CMUnitTest tests_funct_find_symbol[] = {
+	struct CMUnitTest tests_funct_symbol_retrieval[] = {
 	    cmocka_unit_test(funct_find_symbol_returns),
 	    cmocka_unit_test(funct_find_symbol_empty_table),
-	};
-	EXEC_TEST_CATEGORY("funct_find_symbol", tests_funct_find_symbol);
-
-	struct CMUnitTest tests_funct_nth_param_type[] = {
 	    cmocka_unit_test(funct_nth_param_type_returns),
 	    cmocka_unit_test(funct_nth_param_type_parameterless_symbol),
 	    cmocka_unit_test(funct_nth_param_type_def_precedence),
 	};
-	EXEC_TEST_CATEGORY("func_nth_param_type", tests_funct_nth_param_type);
+	EXEC_TEST_CATEGORY("Functable symbol retrieval", tests_funct_symbol_retrieval);
 
-	struct CMUnitTest tests_funct_pending_insert[] = {
+	struct CMUnitTest tests_funct_predicates[] = {
 	    cmocka_unit_test(funct_pending_insert_returns),
 	    cmocka_unit_test(funct_pending_insert_test),
 	    cmocka_unit_test(funct_pending_insert_with_insert_end_fail),
 	    cmocka_unit_test(funct_pending_insert_with_insert_end_success),
-	};
-	struct CMUnitTest tests_funct_exists[] = {
 	    cmocka_unit_test(funct_exists_returns),
 	    cmocka_unit_test(funct_exists_single),
 	};
-
-	EXEC_TEST_CATEGORY("funct_pending_insert", tests_funct_pending_insert);
-	EXEC_TEST_CATEGORY("funct_exists", tests_funct_exists);
+	EXEC_TEST_CATEGORY("Functable predicates", tests_funct_predicates);
 
 	struct CMUnitTest tests_adv_funct_insert_call[] = {
 	    cmocka_unit_test(funct_insert_begin_state_reset),
@@ -1250,7 +1223,7 @@ int main(void) {
 	    cmocka_unit_test(funct_insert_calls_signature_conflict),
 	    cmocka_unit_test(funct_insert_calls_update_existing),
 	};
-	EXEC_TEST_CATEGORY("Advanced funct_insert_* w/ call symbol type", tests_adv_funct_insert_call);
+	EXEC_TEST_CATEGORY("Advanced insertion w/ call symbol type", tests_adv_funct_insert_call);
 
 	struct CMUnitTest tests_adv_funct_insert_def[] = {
 	    cmocka_unit_test(funct_insert_defs_unique),
@@ -1259,14 +1232,14 @@ int main(void) {
 	    cmocka_unit_test(funct_insert_defs_invalid_return),
 	    cmocka_unit_test(funct_insert_defs_redefinition),
 	};
-	EXEC_TEST_CATEGORY("Advanced funct_insert_* w/ def symbol type", tests_adv_funct_insert_def);
+	EXEC_TEST_CATEGORY("Advanced insertion w/ def symbol type", tests_adv_funct_insert_def);
 
 	struct CMUnitTest tests_adv_funct_insert_combined[] = {
 	    cmocka_unit_test(funct_insert_combined_unique),
 	    cmocka_unit_test(funct_insert_combined_update_call),
 	    cmocka_unit_test(funct_insert_combined_update_def),
 	};
-	EXEC_TEST_CATEGORY("Advanced funct_insert_* w/ combined symbols (def & call)",
+	EXEC_TEST_CATEGORY("Advanced insertion w/ combined symbols (def & call)",
 	                   tests_adv_funct_insert_combined);
 	
 	return test_results;

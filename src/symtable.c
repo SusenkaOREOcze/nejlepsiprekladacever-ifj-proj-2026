@@ -9,10 +9,10 @@
 #include "include/symtable_impl.h"
 
 constexpr size_t SYMT_INITIAL_SCOPE_SIZE = 64;
-constexpr size_t SYMT_INITIAL_STANDBY_SCOPES = 10; /* If 0, a global scope is still allocated */
+constexpr size_t SYMT_INITIAL_STANDBY_SCOPES = 10; /* Must be at least 1, otherwise inc_depth will fail */
 
 /*================
-  HELPER FUNCTIONS
+  Helper functions
   ================*/
 
 symt_stat_t symt_alloc_scope(symt_scope_t **const scope, const size_t scope_size) {
@@ -44,8 +44,30 @@ symt_stat_t symt_clear_scope(symt_scope_t *const scope) {
 }
 
 /*===========
-  INIT & FREE
+  Init & Free
   ===========*/
+
+symt_stat_t symt_free(symt_t *sym_table) {
+	if (sym_table == NULL)
+		return SYMTSTAT_BAD_ARG;
+
+	/* Free the active scope stack */
+	while (sym_table->scope_top != NULL) {
+		symt_scope_t *cur_scope = sym_table->scope_top;
+		sym_table->scope_top = cur_scope->prev; /* Descend down the stack, vol. 2 */
+		symt_free_scope(cur_scope);
+	}
+
+	/* Same sh*t, different stack */
+	while (sym_table->standby_top != NULL) {
+		symt_scope_t *cur_scope = sym_table->standby_top;
+		sym_table->standby_top = cur_scope->prev;
+		symt_free_scope(cur_scope);
+	}
+
+	free(sym_table);
+	return SYMTSTAT_OK;
+}
 
 symt_stat_t symt_init(symt_t **const sym_table) {
 	if (sym_table == NULL)
@@ -92,45 +114,12 @@ FAIL_PUSH:
 	return result;
 
 FAIL_ALLOC:
-	/* If more than 1 allocation fails, this frees all the allocated memory thus far before exitting */
-	while (new_table->standby_top != NULL) {
-		symt_scope_t *cur_scope = new_table->standby_top;
-		new_table->standby_top = cur_scope->prev; /* Descend down the stack */
-		symt_free_scope(cur_scope);
-	}
-
-	if (new_table->scope_top != NULL) {
-		symt_free_scope(new_table->scope_top);
-		new_table->scope_top = NULL;
-	}
-	free(new_table);
+	symt_free(new_table);
 	return result;
 }
 
-symt_stat_t symt_free(symt_t *sym_table) {
-	if (sym_table == NULL)
-		return SYMTSTAT_BAD_ARG;
-
-	/* Free the active scope stack */
-	while (sym_table->scope_top != NULL) {
-		symt_scope_t *cur_scope = sym_table->scope_top;
-		sym_table->scope_top = cur_scope->prev; /* Descend down the stack, vol. 2 */
-		symt_free_scope(cur_scope);
-	}
-
-	/* Same sh*t, different stack */
-	while (sym_table->standby_top != NULL) {
-		symt_scope_t *cur_scope = sym_table->standby_top;
-		sym_table->standby_top = cur_scope->prev;
-		symt_free_scope(cur_scope);
-	}
-
-	free(sym_table);
-	return SYMTSTAT_OK;
-}
-
 /*======================
-  SCOPE DEPTH ADJUSTMENT
+  Scope depth adjustment
   ======================*/
 
 symt_stat_t symt_inc_scope_depth(symt_t *sym_table) {
@@ -138,16 +127,21 @@ symt_stat_t symt_inc_scope_depth(symt_t *sym_table) {
 		return SYMTSTAT_BAD_ARG;
 	symt_stat_t result = SYMTSTAT_OK;
 
-	/* Moving a scope from the standby stack onto the global scope stack */
+	/* Get a pristine and fresh scope from the standby stack */
 	symt_scope_t *cur_standby_scope = NULL;
 	result = symt_pop_scope(&sym_table->standby_top, &cur_standby_scope);
-	if (result != SYMTSTAT_OK)
+	if (result != SYMTSTAT_OK) {
 		fprintf(stderr, "symt_inc_scope_depth: ERROR - standby scope is empty. This should never happen!\n");
+		return result;
+	}
 
+	/* Push it onto the main stack */
 	result = symt_push_scope(&sym_table->scope_top, cur_standby_scope);
-	if (result != SYMTSTAT_OK)
+	if (result != SYMTSTAT_OK) {
 		fprintf(stderr, "symt_inc_scope_depth: failed to push standby scope@%p onto global scope stack\n",
 		        (void *)cur_standby_scope);
+		return result;
+	}
 	sym_table->scope_depth++;
 
 	/* The standby stack is empty (how); add another scope to it */
@@ -166,7 +160,7 @@ symt_stat_t symt_inc_scope_depth(symt_t *sym_table) {
 }
 
 symt_stat_t symt_dec_scope_depth(symt_t *sym_table) {
-	if (sym_table == NULL)
+	if (sym_table == NULL || sym_table->scope_top == NULL)
 		return SYMTSTAT_BAD_ARG;
 	symt_stat_t result = SYMTSTAT_OK;
 
@@ -186,7 +180,7 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table) {
 }
 
 /*==========
-  PREDICATES
+  Predicates
   ==========*/
 bool symt_exists_in_current_scope(const symt_t *sym_table, const char *ident) {
 	if (sym_table == NULL || ident == NULL || ident[0] == '\0')
@@ -198,11 +192,11 @@ bool symt_exists_in_current_scope(const symt_t *sym_table, const char *ident) {
 }
 
 /*=============
-  INSERT & FIND
+  Insert & Find
   =============*/
 
 symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *symbol) {
-	if (sym_table == NULL || ident == NULL || symbol == NULL)
+	if (sym_table == NULL || ident == NULL || ident[0] == '\0' || symbol == NULL)
 		return SYMTSTAT_BAD_ARG;
 
 	if (sym_table->scope_top == NULL)
@@ -220,7 +214,7 @@ symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *sym
 }
 
 symt_stat_t symt_find_symbol(symt_t *sym_table, const char *ident, symt_symbol_t *out_symbol) {
-	if (sym_table == NULL || ident == NULL || out_symbol == NULL)
+	if (sym_table == NULL || ident == NULL || ident[0] == '\0' || out_symbol == NULL)
 		return SYMTSTAT_BAD_ARG;
 
 	symt_scope_t *aux_scope_top = sym_table->scope_top;

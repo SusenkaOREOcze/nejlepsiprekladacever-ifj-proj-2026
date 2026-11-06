@@ -21,6 +21,12 @@
 		test_results |= (cmocka_run_group_tests_name((name), (tests), NULL, NULL));                          \
 	} while (0)
 
+#define ASSERT_SYM_EQ(src, dst)                                                                              \
+	do {                                                                                                     \
+		assert_int_equal((src).mutable, (dst).mutable);                                                      \
+		assert_int_equal((src).data_type, (dst).data_type);                                                  \
+	} while (0)
+
 static symt_t *valid_table = NULL;
 
 /*=====================
@@ -153,7 +159,265 @@ static void symt_clear_scope_test(void **state) {
 	symt_free_scope(scope_top);
 }
 
-/* FIXME: these tests must run after symt_init/free/insert/scope_depth tests */
+/*==========================
+  symt_init, symt_free tests
+  ==========================*/
+static void symt_init_test(void **state) {
+	(void)state;
+	symt_t *table;
+
+	assert_int_equal(symt_init(NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_init(&table), SYMTSTAT_OK);
+
+	assert_uint_equal(table->scope_depth, 0);
+	assert_uint_equal(table->uid_accum, 0);
+	assert_non_null(table->scope_top);
+	assert_non_null(table->standby_top);
+
+	const size_t desired_scope_count = 1;
+	size_t actual_scope_count = 0;
+	const size_t desired_standby_count = 10;
+	size_t actual_standby_count = 0;
+
+	/* cleanup */
+	while (table->scope_top) {
+		symt_scope_t *scope = table->scope_top;
+		table->scope_top = scope->prev;
+		HTBL_FREE(scope->scope);
+		free(scope);
+		actual_scope_count++;
+	}
+	assert_uint_equal(desired_scope_count, actual_scope_count);
+
+	while (table->standby_top) {
+		symt_scope_t *scope = table->standby_top;
+		table->standby_top = scope->prev;
+		HTBL_FREE(scope->scope);
+		free(scope);
+		actual_standby_count++;
+	}
+	assert_uint_equal(desired_standby_count, actual_standby_count);
+	
+	free(table);
+}
+
+static void symt_free_test(void **state) {
+	(void)state;
+	symt_t *table;
+
+	assert_int_equal(symt_free(NULL), SYMTSTAT_BAD_ARG);
+	symt_init(&table);
+
+	assert_int_equal(symt_free(table), SYMTSTAT_OK);
+}
+
+/*============================
+  Scope depth adjustment tests
+  ============================*/
+static void symt_inc_scope_depth_returns(void **state) {
+	(void)state;
+	symt_t table = {
+	    .scope_top = NULL,
+	    .standby_top = NULL,
+	    .scope_depth = 0,
+	    .uid_accum = 0,
+	};
+
+	assert_int_equal(symt_inc_scope_depth(NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_inc_scope_depth(&table), SYMTSTAT_NO_SCOPE);
+}
+
+static void symt_inc_scope_depth_single(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+
+	const symt_scope_t *old_scope_top = table->scope_top;
+	const symt_scope_t *old_standby_top = table->standby_top;
+
+	assert_int_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
+	assert_uint_equal(table->scope_depth, 1);
+	assert_uint_equal(table->uid_accum, 0);
+	assert_ptr_equal(table->scope_top, old_standby_top);
+	assert_ptr_equal(table->scope_top->prev, old_scope_top);
+	assert_ptr_not_equal(table->standby_top, old_standby_top);
+
+	symt_free(table);
+}
+
+static void symt_inc_scope_depth_consecutive(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+
+	symt_scope_t *old_scope_top = table->scope_top;
+	symt_scope_t *old_standby_top = table->standby_top;
+
+	for (int i = 0; i < 9; i++) {
+		/* allocation occurs if standby_top is NULL in _this_ call */
+		assert_int_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
+		assert_ptr_equal(old_standby_top, table->scope_top);
+		assert_ptr_equal(old_scope_top, table->scope_top->prev);
+
+		old_scope_top = table->scope_top;
+		old_standby_top = table->standby_top;
+	}
+	assert_uint_equal(table->scope_depth, 9);
+	assert_non_null(table->standby_top);
+
+	symt_free(table);
+}
+
+static void symt_inc_scope_depth_allocation(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+
+	for (int i = 0; i < 9; i++)
+		assert_int_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
+
+	const symt_scope_t *old_scope_top = table->scope_top;
+	assert_int_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
+
+	assert_uint_equal(table->scope_depth, 10);
+	assert_ptr_not_equal(old_scope_top, table->scope_top);
+	assert_ptr_equal(old_scope_top, table->scope_top->prev);
+	assert_non_null(table->standby_top);
+
+	symt_free(table);
+}
+
+static void symt_dec_scope_depth_returns(void **state) {
+	(void)state;
+	symt_t table = {
+	    .scope_depth = 0,
+	    .scope_top = NULL,
+	    .standby_top = NULL,
+	    .uid_accum = 0,
+	};
+
+	assert_int_equal(symt_dec_scope_depth(NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_dec_scope_depth(&table), SYMTSTAT_BAD_ARG); /* uninitialized table, should fail */
+}
+
+static void symt_dec_scope_depth_single(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+
+	symt_inc_scope_depth(table);
+	const symt_scope_t *old_scope_top = table->scope_top;
+	const symt_scope_t *old_standby_top = table->standby_top;
+	const symt_scope_t *old_second_scope_top = table->scope_top->prev;
+
+	assert_int_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
+	assert_uint_equal(table->scope_depth, 0);
+	assert_uint_equal(table->uid_accum, 0);
+	assert_ptr_equal(table->scope_top, old_second_scope_top);
+	assert_null(table->scope_top->prev);
+	assert_ptr_equal(table->standby_top, old_scope_top);
+	assert_ptr_equal(table->standby_top->prev, old_standby_top);
+
+	/* testing decrementing on a global scope */
+	assert_int_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
+	assert_uint_equal(table->scope_depth, 0);
+	assert_non_null(table->scope_top);
+	assert_non_null(table->standby_top);
+
+	symt_free(table);
+}
+
+/*===================================
+  Symbol table symbol insertion tests
+  ===================================*/
+static void symt_insert_returns(void **state) {
+	(void)state;
+	symt_t *table = (void *)0xDEADBEEF; /* I love C */
+	symt_symbol_t sym = {
+	    .mutable = false,
+	    .data_type = SYMT_TYPE_DOUBLE,
+	};
+
+	symt_t uninit_table = {
+	    .scope_depth = 0,
+	    .scope_top = NULL,
+	    .standby_top = NULL,
+	    .uid_accum = 0,
+	};
+
+	assert_int_equal(symt_insert(NULL, "angels on the", &sym), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_insert(table, NULL, &sym), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_insert(table, "", &sym), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_insert(table, "sideline again", NULL), SYMTSTAT_BAD_ARG);
+
+	assert_int_equal(symt_insert(&uninit_table, "betting on their patience and reason", &sym),
+	                 SYMTSTAT_NO_SCOPE);
+}
+
+static void symt_insert_single(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t sym = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_INTEGER,
+	    .uid = -1,
+	};
+
+	assert_int_equal(symt_insert(table, "clutch it like a cornerstone", &sym), SYMTSTAT_OK);
+	assert_uint_equal(table->uid_accum, 1);
+
+	symt_symbol_t out_sym;
+	assert_true(HTBL_RETRIEVE(table->scope_top->scope, "clutch it like a cornerstone", out_sym));
+	assert_int_equal(sym.mutable, out_sym.mutable);
+	assert_int_equal(sym.data_type, out_sym.data_type);
+	assert_uint_equal(out_sym.uid, 0);
+
+	symt_free(table);
+}
+
+static void symt_insert_nested_scope(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_symbol_t sym = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_STRING,
+	};
+
+	symt_init(&table);
+	assert_int_equal(symt_insert(table, "EMD", &sym), SYMTSTAT_OK);
+	const symt_scope_t *global_scope = table->scope_top;
+
+	symt_inc_scope_depth(table);
+	assert_int_equal(symt_insert(table, "12-567C", &sym), SYMTSTAT_OK);
+	assert_false(HTBL_EXISTS(table->scope_top->scope, "EMD"));
+	assert_true(HTBL_EXISTS(table->scope_top->scope, "12-567C"));
+
+	assert_false(HTBL_EXISTS(global_scope->scope, "12-567C"));
+	assert_true(HTBL_EXISTS(global_scope->scope, "EMD"));
+
+	symt_free(table);
+}
+
+static void symt_dec_scope_depth_standby_cleanup(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+
+	symt_inc_scope_depth(table);
+	symt_symbol_t sym = {
+	    .mutable = false,
+	    .data_type = SYMT_TYPE_UNIT,
+	};
+	symt_insert(table, "here we have a stone", &sym);
+
+	assert_int_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
+	assert_false(HTBL_EXISTS(table->standby_top->scope, "here we have a stone"));
+	assert_false(HTBL_EXISTS(table->scope_top->scope, "here we have a stone"));
+
+	symt_free(table);
+}
+
 /*=====================
   Symbol searching tests
   =====================*/
@@ -215,162 +479,95 @@ static void symt_exists_in_cs_several_nested_scope(void **state) {
 	symt_free(table);
 }
 
-/* FIXME: old, pls fix :-) */
-void test_allocation(void **state) {
+static void symt_find_symbol_returns(void **state) {
 	(void)state;
-
-	print_message("  |-symt_init()\n");
-	symt_t *table;
-	assert_uint_equal(symt_init(NULL), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_init(&table), SYMTSTAT_OK);
-
-	assert_uint_equal(table->uid_accum, 0);
-	assert_uint_equal(table->scope_depth, 0);
-	assert_non_null(table->scope_top);
-	assert_non_null(table->scope_top->scope.table);
-
-	symt_scope_t *aux_standby_top = table->standby_top;
-	size_t standby_count = 0;
-	while (aux_standby_top != NULL) {
-		assert_non_null(aux_standby_top);
-		assert_non_null(aux_standby_top->scope.table);
-		aux_standby_top = aux_standby_top->prev;
-		standby_count++;
-	}
-	assert_uint_equal(standby_count, 10);
-
-	print_message("  \\-symt_free()\n");
-	assert_uint_equal(symt_free(NULL), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_free(table), SYMTSTAT_OK); /* table is invalid after this point */
-}
-
-void test_scope_depth_changing(void **state) {
-	(void)state;
-
-	symt_t *table;
-	symt_init(&table);
-
-	symt_scope_t *const old_global_scope = table->scope_top;
-	symt_scope_t *const old_standby_scope = table->standby_top;
-	symt_scope_t *const old_prev_standby_scope = table->standby_top->prev;
-
-	print_message("  |-symt_inc_scope_depth()\n");
-	assert_uint_equal(symt_inc_scope_depth(NULL), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
-
-	assert_uint_equal(table->scope_depth, 1);
-	assert_ptr_equal(old_global_scope, table->scope_top->prev);   /* Current scope has moved down by one */
-	assert_ptr_equal(old_standby_scope, table->scope_top);        /* New scope is the first standby scope */
-	assert_ptr_equal(old_prev_standby_scope, table->standby_top); /* Top of standby matches second-to-top
-	                                                               * standby scope */
-
-	print_message("  |-symt_dec_scope_depth()\n");
-	assert_uint_equal(symt_dec_scope_depth(NULL), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
-
-	assert_uint_equal(table->scope_depth, 0);
-	assert_uint_equal(old_global_scope, table->scope_top);
-	assert_uint_equal(old_standby_scope, table->standby_top);
-	assert_uint_equal(old_prev_standby_scope, table->standby_top->prev);
-
-	assert_uint_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
-	assert_uint_equal(table->scope_depth, 0);
-	assert_non_null(table->scope_top);
-
-	print_message("  \\-new standby scope allocation\n");
-	for (size_t i = 0; i < 16; i++) {
-		assert_uint_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
-		assert_non_null(table->standby_top); /* Once this reaches the 11th iteration and onward, this
-		                                      * better not be NULL */
-	}
-
-	symt_free(table);
-}
-
-void test_symbol_io_single_scope(void **state) {
-	(void)state;
-
-	symt_t *bad_table = malloc(sizeof(*bad_table));
-	bad_table->scope_top = NULL;
-
-	symt_t *table;
-	symt_init(&table);
-	symt_symbol_t new_symbol = {
-	    .mutable = true,
-	    .data_type = SYMT_TYPE_DOUBLE,
-	};
-	const unsigned long long old_uid_accum = table->uid_accum;
-
-	print_message("  |-symt_insert()\n");
-	assert_uint_equal(symt_insert(NULL, "hi", &new_symbol), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_insert(table, NULL, &new_symbol), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_insert(table, "hi", NULL), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_insert(bad_table, "nuh uh", &new_symbol), SYMTSTAT_NO_SCOPE);
-
-	assert_uint_equal(symt_insert(table, "myVariable", &new_symbol), SYMTSTAT_OK);
-	assert_uint_equal(table->uid_accum, old_uid_accum + 1);
-
-	new_symbol.mutable = false;
-	assert_uint_equal(symt_insert(table, "myValue", &new_symbol), SYMTSTAT_OK);
-	assert_uint_equal(table->uid_accum, old_uid_accum + 2);
-
-	print_message("  \\-symt_find_symbol()\n");
-	const unsigned long long special_uid = 42;
-	symt_symbol_t retr_symbol = {
-	    .uid = special_uid,
-	};
-	assert_uint_equal(symt_find_symbol(NULL, "hi", &retr_symbol), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_find_symbol(bad_table, "hi", &retr_symbol), SYMTSTAT_NO_SYMBOL);
-	assert_uint_equal(retr_symbol.uid, special_uid);
-	assert_uint_equal(symt_find_symbol(table, NULL, &retr_symbol), SYMTSTAT_BAD_ARG);
-	assert_uint_equal(symt_find_symbol(table, "hi", NULL), SYMTSTAT_BAD_ARG);
-
-	assert_uint_equal(symt_find_symbol(table, "nonexistent", &retr_symbol), SYMTSTAT_NO_SYMBOL);
-	assert_uint_equal(retr_symbol.uid, special_uid);
-
-	assert_uint_equal(symt_find_symbol(table, "myVariable", &retr_symbol), SYMTSTAT_OK);
-	assert_true(retr_symbol.mutable);
-	assert_int_equal(retr_symbol.data_type, SYMT_TYPE_DOUBLE);
-	assert_uint_equal(retr_symbol.uid, 0);
-
-	assert_uint_equal(symt_find_symbol(table, "myValue", &retr_symbol), SYMTSTAT_OK);
-	assert_false(retr_symbol.mutable);
-	assert_int_equal(retr_symbol.data_type, SYMT_TYPE_DOUBLE);
-	assert_uint_equal(retr_symbol.uid, 1);
-
-	symt_free(table);
-	free(bad_table);
-}
-
-void test_symbol_io_shadowing(void **state) {
-	(void)state;
-	symt_t *table;
-	symt_init(&table);
-
-	symt_symbol_t new_symbol = {
+	symt_t *table = (void *)0xDEADBEEF;
+	symt_symbol_t sym = {
+	    .mutable = false,
 	    .data_type = SYMT_TYPE_STRING,
-	    .mutable = true,
 	};
-	symt_insert(table, "global_symbol", &new_symbol);  /* uid == 0 */
-	symt_insert(table, "global2_symbol", &new_symbol); /* uid == 1 */
+
+	assert_int_equal(symt_find_symbol(NULL, "hi", &sym), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_find_symbol(table, NULL, &sym), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_find_symbol(table, "hi", NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(symt_find_symbol(table, "", &sym), SYMTSTAT_BAD_ARG);
+}
+
+static void symt_find_symbol_single_scope(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t sym = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_BOOLEAN,
+	};
+	symt_symbol_t sym2 = {
+	    .mutable = false,
+	    .data_type = SYMT_TYPE_STRING,
+	};
+
+	symt_insert(table, "withering my", &sym);
+	symt_insert(table, "intuition", &sym2);
+
+	symt_symbol_t out_sym;
+	assert_int_equal(symt_find_symbol(table, "withering my", &out_sym), SYMTSTAT_OK);
+	ASSERT_SYM_EQ(sym, out_sym);
+
+	assert_int_equal(symt_find_symbol(table, "intuition", &out_sym), SYMTSTAT_OK);
+	ASSERT_SYM_EQ(sym2, out_sym);
+
+	assert_int_equal(symt_find_symbol(table, "nope", &out_sym), SYMTSTAT_NO_SYMBOL);
+
+	symt_free(table);
+}
+
+static void symt_find_symbol_multi_scope(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t sym = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_BOOLEAN,
+	};
+	symt_symbol_t sym2 = {
+	    .mutable = false,
+	    .data_type = SYMT_TYPE_STRING,
+	};
+
+	symt_insert(table, "I know", &sym);
 	symt_inc_scope_depth(table);
-	symt_insert(table, "local1_symbol", &new_symbol); /* uid == 2 */
-	symt_insert(table, "global_symbol", &new_symbol); /* uid == 3 */
+	symt_insert(table, "it's stupid", &sym2);
 
-	symt_symbol_t retr_symbol;
-	assert_uint_equal(symt_find_symbol(table, "global_symbol", &retr_symbol), SYMTSTAT_OK);
-	assert_uint_equal(retr_symbol.uid, 3);
-	assert_uint_equal(symt_find_symbol(table, "global2_symbol", &retr_symbol), SYMTSTAT_OK);
-	assert_uint_equal(retr_symbol.uid, 1);
-	assert_uint_equal(symt_find_symbol(table, "local1_symbol", &retr_symbol), SYMTSTAT_OK);
-	assert_uint_equal(retr_symbol.uid, 2);
+	symt_symbol_t out_sym;
+	assert_int_equal(symt_find_symbol(table, "I know", &out_sym), SYMTSTAT_OK);
+	ASSERT_SYM_EQ(sym, out_sym);
 
-	symt_dec_scope_depth(table);
-	assert_uint_equal(symt_find_symbol(table, "local1_symbol", &retr_symbol), SYMTSTAT_NO_SYMBOL);
-	assert_uint_equal(symt_find_symbol(table, "global_symbol", &retr_symbol), SYMTSTAT_OK);
-	assert_uint_equal(retr_symbol.uid, 0); /* note the difference between this and line 160 */
-	assert_uint_equal(symt_find_symbol(table, "global2_symbol", &retr_symbol), SYMTSTAT_OK);
-	assert_uint_equal(retr_symbol.uid, 1);
+	assert_int_equal(symt_find_symbol(table, "it's stupid", &out_sym), SYMTSTAT_OK);
+	ASSERT_SYM_EQ(sym2, out_sym);
+
+	symt_free(table);
+}
+
+static void symt_find_symbol_shadowing(void **state) {
+	(void)state;
+	symt_t *table;
+	symt_init(&table);
+	symt_symbol_t sym = {
+	    .mutable = true,
+	    .data_type = SYMT_TYPE_BOOLEAN,
+	};
+	symt_symbol_t sym2 = {
+	    .mutable = false,
+	    .data_type = SYMT_TYPE_STRING,
+	};
+
+	symt_insert(table, "the same", &sym);
+	symt_inc_scope_depth(table);
+	symt_insert(table, "the same", &sym2);
+
+	symt_symbol_t out_sym;
+	assert_int_equal(symt_find_symbol(table, "the same", &out_sym), SYMTSTAT_OK);
+	ASSERT_SYM_EQ(sym2, out_sym); /* local scope priority */
 
 	symt_free(table);
 }
@@ -393,14 +590,36 @@ int main(void) {
 
 	EXEC_TEST_CATEGORY("Symtable helper functions", helper_func_tests);
 
-	/* TODO: ADD symtable interaction tests */
+	struct CMUnitTest symt_basic_interaction_tests[] = {
+	    cmocka_unit_test(symt_init_test),
+	    cmocka_unit_test(symt_free_test),
+	    cmocka_unit_test(symt_inc_scope_depth_returns),
+	    cmocka_unit_test(symt_inc_scope_depth_single),
+	    cmocka_unit_test(symt_inc_scope_depth_consecutive),
+	    cmocka_unit_test(symt_inc_scope_depth_allocation),
+	    cmocka_unit_test(symt_dec_scope_depth_returns),
+	    cmocka_unit_test(symt_dec_scope_depth_single),
+	};
+	EXEC_TEST_CATEGORY("Symtable basic interaction functions", symt_basic_interaction_tests);
+
+	struct CMUnitTest symt_symbol_insertion_tests[] = {
+	    cmocka_unit_test(symt_insert_returns),
+	    cmocka_unit_test(symt_insert_single),
+	    cmocka_unit_test(symt_insert_nested_scope),
+	    cmocka_unit_test(symt_dec_scope_depth_standby_cleanup),
+	};
+	EXEC_TEST_CATEGORY("Symtable symbol insertion functions", symt_symbol_insertion_tests);
 
 	struct CMUnitTest symt_search_tests[] = {
 	    cmocka_unit_test(symt_exists_in_cs_returns),
 	    cmocka_unit_test(symt_exists_in_cs_several_global_scope),
 	    cmocka_unit_test(symt_exists_in_cs_several_nested_scope),
+	    cmocka_unit_test(symt_find_symbol_returns),
+	    cmocka_unit_test(symt_find_symbol_single_scope),
+	    cmocka_unit_test(symt_find_symbol_multi_scope),
+	    cmocka_unit_test(symt_find_symbol_shadowing),
 	};
-	EXEC_TEST_CATEGORY("Symtable scope searching", symt_search_tests);
+	EXEC_TEST_CATEGORY("Symtable symbol search functions", symt_search_tests);
 
 	free(valid_table);
 	return test_results;

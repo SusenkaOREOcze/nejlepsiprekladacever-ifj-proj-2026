@@ -237,7 +237,7 @@ static void htbl_delete_single(void **state) {
 	assert_uint_equal((unsigned long)(*exploded_entry->data), data); /* make sure entry still exists */
 
 	assert_int_equal(HTBL_DELETE(table, "la bomba"), HTBLSTAT_OK); /* kinda cringe, idk */
-	
+
 	HTBL_FREE(table);
 }
 
@@ -257,7 +257,7 @@ static void htbl_exists_returns(void **state) {
 }
 
 static void htbl_exists_single(void **state) {
-    	(void)state;
+	(void)state;
 	htbl_ulong_t table;
 
 	HTBL_INIT(table, 62);
@@ -305,61 +305,66 @@ static void hashtable_find_entry_returns(void **state) {
 	HTBL_FREE(table);
 }
 
-static void test_find_entry(void **state) {
+static constexpr size_t KEY_COUNT = 16;
+static const char *test_keys[KEY_COUNT] = {
+    "The",     "Fitness",  "Gram", "pacer", "test",          "is",   "a",    "multi-stage",
+    "aerobic", "capacity", "test", "that",  "progressively", "gets", "more", "difficult",
+};
+static size_t test_indeces[KEY_COUNT] = {
+    0,
+};
+static htbl_ulong_t test_table;
+
+static void hashtable_find_entry_several_valid(void **state) {
 	(void)state;
+	HTBL_INIT(test_table, 32); /* beware: this gets freed in hashtable_find_entry_several_invalid() */
 
-	htbl_ulong_t table;
-	HTBL_INIT(table, 32);
-
-	constexpr size_t KEY_COUNT = 16;
-	static const char *keys[KEY_COUNT] = {
-	    "The",     "Fitness",  "Gram", "pacer", "test",          "is",   "a",    "multi-stage",
-	    "aerobic", "capacity", "test", "that",  "progressively", "gets", "more", "difficult",
-	};
-	static size_t indeces[KEY_COUNT] = {
-	    0,
-	};
-	/* Inserting keys for testing */
 	for (size_t i = 0; i < KEY_COUNT; i++) {
-		HTBL_INSERT(table, keys[i], &i);
+		HTBL_INSERT(test_table, test_keys[i], &i);
 	}
 
-	/* Find the index of every key _without_ using the _find_entry function */
+	/* finding indeces of all the keys the hard way */
 	for (size_t key_idx = 0; key_idx < KEY_COUNT; key_idx++) {
-		htbl_key_t key = keys[key_idx];
+		htbl_key_t key = test_keys[key_idx];
 
-		for (size_t table_idx = 0; table_idx < table.table->size; table_idx++) {
-			htbl_entry_t *entry = table.table->array[table_idx];
+		for (size_t table_idx = 0; table_idx < test_table.table->size; table_idx++) {
+			htbl_entry_t *entry = test_table.table->array[table_idx];
 			if (entry == NULL || strcmp(entry->key, key) != 0)
 				continue;
-			indeces[key_idx] = table_idx;
+			test_indeces[key_idx] = table_idx;
 		}
 	}
 
-	print_message("  Testing hashtable_find_entry with HTBL_FIND_VALID, table has only valid entries\n");
+	/* making sure hashtable_find_entry returns the same thing that we found earlier */
 	for (size_t i = 0; i < KEY_COUNT; i++) {
 		size_t find_func_index;
 		size_t find_invalid_index;
 
-		assert_non_null(hashtable_find_entry(table.table, keys[i], &find_func_index, HTBL_FIND_VALID));
-		assert_uint_equal(find_func_index, indeces[i]);
-		assert_non_null(hashtable_find_entry(table.table, keys[i], &find_invalid_index, HTBL_FIND_INVALID));
-		assert_uint_equal(find_invalid_index, indeces[i]);
+		assert_non_null(
+		    hashtable_find_entry(test_table.table, test_keys[i], &find_func_index, HTBL_FIND_VALID));
+		assert_uint_equal(find_func_index, test_indeces[i]);
+		assert_non_null(
+		    hashtable_find_entry(test_table.table, test_keys[i], &find_invalid_index, HTBL_FIND_INVALID));
+		assert_uint_equal(find_invalid_index, test_indeces[i]);
 	}
+}
 
-	HTBL_DELETE(table, keys[3]);
-	HTBL_DELETE(table, keys[14]);
-	print_message("  Repeating test with HTBL_FIND_VALID with two invalid (tombstone) entries in table\n");
+static void hashtable_find_entry_several_invalid(void **state) {
+	(void)state;
+	HTBL_DELETE(test_table, test_keys[3]);
+	HTBL_DELETE(test_table, test_keys[14]);
+
 	for (size_t i = 0; i < KEY_COUNT; i++) {
 		size_t find_func_index;
-		htbl_entry_t *entry = hashtable_find_entry(table.table, keys[i], &find_func_index, HTBL_FIND_VALID);
+		htbl_entry_t *entry =
+		    hashtable_find_entry(test_table.table, test_keys[i], &find_func_index, HTBL_FIND_VALID);
 
 		/* If a valid entry was returned, indeces must still match */
 		if (entry)
-			assert_uint_equal(find_func_index, indeces[i]);
+			assert_uint_equal(find_func_index, test_indeces[i]);
 	}
 
-	HTBL_FREE(table);
+	HTBL_FREE(test_table);
 }
 
 /*========================
@@ -425,45 +430,53 @@ static void htbl_adv_resize_tombstone_optimization(void **state) {
 	HTBL_FREE(table);
 }
 
-static void test_insert_update_semantics(void **state) {
+static void htbl_adv_insert_update_semantics(void **state) {
 	(void)state;
-
 	htbl_ulong_t table;
-	HTBL_INIT(table, 16);
+	HTBL_INIT(table, 42);
 
-	/* Add some data to the table */
 	unsigned long data = 256;
 	const unsigned long vicarious_data = data;
+	HTBL_INSERT(table, "live while the", &data);
+	data += 80;
+	HTBL_INSERT(table, "whole world dies", &data);
+
+	/* Updating existing item 'whole world dies' */
+	unsigned long ret_data = 0;
+	assert_true(HTBL_RETRIEVE(table, "whole world dies", ret_data));
+	assert_int_equal(HTBL_INSERT(table, "whole world dies", (unsigned long *)&vicarious_data), HTBLSTAT_OK);
+	assert_true(HTBL_RETRIEVE(table, "whole world dies", ret_data));
+	assert_uint_equal(ret_data, vicarious_data);
+
+	HTBL_FREE(table);
+}
+
+static void htbl_adv_insert_creates_no_duplicates(void **state) {
+	(void)state;
+	htbl_ulong_t table;
+	HTBL_INIT(table, 42);
+
+	unsigned long data = 256;
+	const unsigned long vicarious_data = data + 42;
 	HTBL_INSERT(table, "Vicariously", &data);
 	data += 80;
 	HTBL_INSERT(table, "I", &data);
-	data -= 60;
-	HTBL_INSERT(table, "live while", &data);
-	data *= 3;
-	HTBL_INSERT(table, "the whole world dies.", &data);
 
-	/* Delete and add the same key back and make sure no duplicates are created */
+	/* Remove and add back the same key - this should not create a new entry */
 	HTBL_DELETE(table, "Vicariously");
-	HTBL_INSERT(table, "Vicariously", (unsigned long *)&vicarious_data);
+	HTBL_INSERT(table, "Vicariously", (unsigned long *)&vicarious_data); /* update existing */
 
+	/* Now search for 'Vicariously'; if found, it must be the only one */
 	bool found = false;
 	for (size_t i = 0; i < table.table->size; i++) {
 		if (table.table->array[i] == NULL)
 			continue;
-		/* Make sure no duplicates (including invalid entries) exist in the table */
 		if (!found) {
 			if ((unsigned long)table.table->array[i]->data == vicarious_data)
 				found = true;
 		} else
 			assert_uint_not_equal((unsigned long)table.table->array[i]->data, vicarious_data);
 	}
-
-	/* Checking if updating data works */
-	unsigned long old_data = 0;
-	HTBL_RETRIEVE(table, "the whole world dies.", old_data);
-	HTBL_INSERT(table, "the whole world dies.", (unsigned long *)&vicarious_data);
-	HTBL_RETRIEVE(table, "the whole world dies.", old_data);
-	assert_uint_equal(old_data, vicarious_data);
 
 	HTBL_FREE(table);
 }
@@ -495,18 +508,22 @@ int main(void) {
 	    cmocka_unit_test(htbl_exists_single),
 	    cmocka_unit_test(htbl_retrieve_returns),
 	    cmocka_unit_test(hashtable_find_entry_returns),
+	    cmocka_unit_test(hashtable_find_entry_several_valid),
+	    cmocka_unit_test(hashtable_find_entry_several_invalid),
 	};
 
 	struct CMUnitTest htbl_adv_tests[] = {
 	    cmocka_unit_test(htbl_adv_auto_resize),
 	    cmocka_unit_test(htbl_adv_resize_tombstone_optimization),
+	    cmocka_unit_test(htbl_adv_insert_update_semantics),
+	    cmocka_unit_test(htbl_adv_insert_creates_no_duplicates),
 	};
 
 	EXEC_TEST_CATEGORY("Hashtable alloc/dealloc", htbl_init_tests);
 	EXEC_TEST_CATEGORY("Hashtable basic entry insertion", htbl_insert_tests);
 	EXEC_TEST_CATEGORY("Hashtable cleanup", htbl_delete_tests);
 	EXEC_TEST_CATEGORY("Hashtable basic entry retrieval", htbl_exists_tests); /* Includes HTBL_EXISTS tests */
-	EXEC_TEST_CATEGORY("Hashtable advanced", htbl_adv_tests);		  /* a bunch of random sh*t */
+	EXEC_TEST_CATEGORY("Hashtable advanced", htbl_adv_tests);                 /* a bunch of random sh*t */
 
 	return test_results;
 }
