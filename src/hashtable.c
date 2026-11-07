@@ -42,27 +42,33 @@ htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *
 			*entry_index = ULONG_MAX;
 		return NULL;
 	}
+	/* Search begins at the would-be index of the key */
 	size_t key_hash = hashtable_hash_func(key);
 	size_t base_index = HASHTABLE_CALC_INDEX(table, key_hash);
 	int offset = -1;
 	htbl_entry_t *cur_entry = NULL;
 	htbl_entry_t *invalid_entry = NULL;
 
+	/* Find a free slot */
 	do { /* Note that 'offset' is guaranteed to be >=0 because of the do...while loop */
 		offset++;
 		cur_entry = table->array[HASHTABLE_CALC_INDEX(table, base_index + offset)];
 
+		/* If we want invalid entries too, consider them as NULL (and therefor free to use) */
 		if (opts == HTBL_FIND_INVALID && invalid_entry == NULL && cur_entry != NULL &&
-		    cur_entry->key[0] == '\0')
+		    cur_entry->key[0] == '\0') {
 			invalid_entry = cur_entry;
-
-		if (offset >= (int)table->size) { // TODO: update to a custom logging solution?
-			fprintf(stderr, "hashtable_find_entry: table size exceeded!\n");
-			if (entry_index != NULL)
-				*entry_index = table->size;
-			return NULL;
+			break;
 		}
-	} while (cur_entry != NULL && strcmp(cur_entry->key, key) != 0);
+	} while (cur_entry != NULL && strcmp(cur_entry->key, key) != 0 && offset < (int)table->size);
+
+	/* Sound an error if the loop concluded as a result of endless iteration */
+	if (invalid_entry == NULL && offset >= (int)table->size) {
+	    fprintf(stderr, "hashtable_find_entry: table has no free space left\n");
+	    if (entry_index != NULL)
+		*entry_index = table->size;
+	    return NULL;
+	}
 
 	/* Give the caller the index when required */
 	if (entry_index != NULL)
