@@ -91,8 +91,9 @@ symt_stat_t symt_dec_scope_depth(symt_t *sym_table);
    @param sym_table The symbol table to insert into.
    @param ident The identifier (string) of the symbol.
    @param[in] symbol A structure containing the symbol's data.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_ARG if the arguments don't make sense, SYMTSTAT_NO_SCOPE if
-   there is no active scope to push into, or SYMTSTAT_BAD_ALLOC if symbol allocation explodes.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_ARG if the arguments don't make sense or if attempting to
+   overwrite an existing immutable symbol, SYMTSTAT_NO_SCOPE if there is no active scope to push into, or
+   SYMTSTAT_BAD_ALLOC if symbol allocation explodes.
 */
 symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *symbol);
 
