@@ -10,22 +10,27 @@
 #include "include/functable_impl.h"
 
 /*=========
-  CONSTANTS
+  Constants
   =========*/
 
 constexpr size_t FUNCT_INIT_TYPE_ARRAY_SIZE = 1024;
 constexpr size_t FUNCT_INIT_SCOPE_SIZE = 128;
 
 static constexpr funct_symbol_t UNDEFINED_SYMBOL = {
-    .call_param_type_array = NULL,
-    .def_param_type_array = NULL,
+    .def_array_offset = -1,
+    .has_def_sign = false,
+    .call_array_offset = -1,
+    .has_call_sign = false,
     .param_count = -1,
     .ret_type = SYMT_TYPE_UNDEFINED,
 };
 
 /*================
-  HELPER FUNCTIONS
+  Helper functions
   ================*/
+
+#define FUNCT_DEF_TYPE_OFFSET(tbl, sym, offset) (tbl)->def_type_array[(sym)->def_array_offset + offset]
+#define FUNCT_CALL_TYPE_OFFSET(tbl, sym, offset) (tbl)->call_type_array[(sym)->call_array_offset + offset]
 
 int funct_resize_type_array(int8_t **const array, const size_t new_size) {
 	if (array == NULL)
@@ -51,7 +56,11 @@ int funct_append_def_type(funct_t *table, const symt_data_type_t type) {
 			return 1;
 	}
 
-	/* Append the device (note how it uses the "imaginary" index) */
+	/*
+	  The imaginary count is used during insertion state and specifies the first physical free slot in the
+	  param array. The "real" count is the first free logical slot, i.e. one that guarantees that any
+	  following indeces are either empty or have invalid entries (entries for symbols that don't exist).
+	*/
 	table->def_type_array[table->def_arr_im_count] = (int8_t)type;
 	table->def_arr_im_count++;
 	return 0;
@@ -61,7 +70,7 @@ int funct_append_call_type(funct_t *table, const symt_data_type_t type) {
 	if (table == NULL)
 		return 1;
 
-	/* GIVE ME your memory motherf- */
+	/* "GIVE ME your memory", said the impotent, insolent, recalcitrant, ignorant... */
 	if (table->call_arr_im_count >= table->call_arr_size) {
 		table->call_arr_size *= 2;
 		if (funct_resize_type_array(&table->call_type_array, table->call_arr_size))
@@ -74,40 +83,53 @@ int funct_append_call_type(funct_t *table, const symt_data_type_t type) {
 	return 0;
 }
 
-symt_stat_t funct_compare_sym_signatures(const funct_symbol_t *base_sym, const funct_symbol_t *comp_sym) {
-	if (base_sym == NULL || comp_sym == NULL)
-		return SYMTSTAT_BAD_ARG;
-	/* Nothing to compare */
-	if (base_sym->def_param_type_array == NULL && base_sym->call_param_type_array == NULL)
-		return SYMTSTAT_BAD_ARG;
-	if (comp_sym->def_param_type_array == NULL && comp_sym->call_param_type_array == NULL)
+symt_stat_t funct_compare_sym_signatures(const funct_t *table, const funct_symbol_t *base_sym,
+                                         const funct_symbol_t *comp_sym) {
+	if (table == NULL || base_sym == NULL || comp_sym == NULL)
 		return SYMTSTAT_BAD_ARG;
 
-	/* Note how this doesn't check parameter count identity (you have to do that yourself) */
+	/* Parameterless functions */
+	bool trivial_identity = false;
+
+	if (!funct_sym_has_def_sign(base_sym) && !funct_sym_has_call_sign(base_sym))
+		trivial_identity = true;
+	if (!funct_sym_has_def_sign(comp_sym) && !funct_sym_has_call_sign(comp_sym)) {
+		if (trivial_identity) /* No signature in base_sym and comp_sym -> match */
+			return SYMTSTAT_OK;
+		trivial_identity = true; /* base_sym _had_ a signature (this was false) -> no match */
+	}
+
+	/* Only true if the previous code segment doesn't return early or doesn't run at all */
+	if (trivial_identity)
+		return SYMTSTAT_BAD_ARG;
+
+	/* Respect array bounds (you have to check for the same parameter counts yourself) */
 	int min_param_count =
 	    (base_sym->param_count > comp_sym->param_count ? comp_sym->param_count : base_sym->param_count);
-	if (min_param_count == -1) /* Undefined symbol */
+	if (min_param_count <= -1) /* One of the two symbols is undefined */
 		return SYMTSTAT_BAD_ARG;
 
 	/* No base definition signature - compare to call signature */
-	if (base_sym->def_param_type_array == NULL)
+	if (!funct_sym_has_def_sign(base_sym))
 		for (int i = 0; i < min_param_count; i++) {
-			symt_stat_t base_call_param = base_sym->call_param_type_array[i];
-			/* This works because of the NULL check at the beginning of the function */
+			symt_stat_t base_call_param = FUNCT_CALL_TYPE_OFFSET(table, base_sym, i);
+
+			/* Prioritize comparing to definition parameter array */
 			symt_stat_t comp_param =
-			    (comp_sym->def_param_type_array != NULL ? comp_sym->def_param_type_array[i]
-				                                        : comp_sym->call_param_type_array[i]);
+			    (funct_sym_has_def_sign(comp_sym) ? FUNCT_DEF_TYPE_OFFSET(table, comp_sym, i)
+				                                  : FUNCT_CALL_TYPE_OFFSET(table, comp_sym, i));
 			if (base_call_param != comp_param)
 				return SYMTSTAT_FUNC_DIFF_CALL_SIGN;
 		}
 	/* Base has definition signature - compare to it */
 	else
 		for (int i = 0; i < min_param_count; i++) {
-			symt_stat_t base_def_param = base_sym->def_param_type_array[i];
-			/* This works because of the NULL check at the beginning of the function */
+			symt_stat_t base_def_param = FUNCT_DEF_TYPE_OFFSET(table, base_sym, i);
+
+			/* Prioritize comparing to definition parameter array */
 			symt_stat_t comp_param =
-			    (comp_sym->def_param_type_array != NULL ? comp_sym->def_param_type_array[i]
-				                                        : comp_sym->call_param_type_array[i]);
+			    (funct_sym_has_def_sign(comp_sym) ? FUNCT_DEF_TYPE_OFFSET(table, comp_sym, i)
+				                                  : FUNCT_CALL_TYPE_OFFSET(table, comp_sym, i));
 			if (base_def_param != comp_param)
 				return SYMTSTAT_FUNC_DIFF_DEF_SIGN;
 		}
@@ -115,25 +137,34 @@ symt_stat_t funct_compare_sym_signatures(const funct_symbol_t *base_sym, const f
 	return SYMTSTAT_OK;
 }
 
-symt_stat_t funct_copy_update_symbol(funct_symbol_t *dst_sym, const funct_symbol_t *src_sym) {
+symt_stat_t funct_copy_update_symbol(funct_symbol_t *dst_sym, const funct_symbol_t *src_sym,
+                                     const bool is_def) {
 	if (dst_sym == NULL || src_sym == NULL)
 		return SYMTSTAT_BAD_ARG;
 
 	/* Update def/call arrays if undefined */
-	if (dst_sym->def_param_type_array == NULL)
-		dst_sym->def_param_type_array = src_sym->def_param_type_array;
-	if (dst_sym->call_param_type_array == NULL)
-		dst_sym->call_param_type_array = src_sym->call_param_type_array;
+	if (!funct_sym_has_def_sign(dst_sym)) {
+		dst_sym->def_array_offset = src_sym->def_array_offset;
+		dst_sym->has_def_sign = src_sym->has_def_sign;
+	}
+	if (!funct_sym_has_call_sign(dst_sym)) {
+		dst_sym->call_array_offset = src_sym->call_array_offset;
+		dst_sym->has_call_sign = src_sym->has_call_sign;
+	}
 
-	/* Update return type if undefined */
-	if (dst_sym->ret_type == SYMT_TYPE_UNDEFINED)
+	/* Update return type if undefined or if src_sym is a definition */
+	if (dst_sym->ret_type == SYMT_TYPE_UNDEFINED || is_def)
 		dst_sym->ret_type = src_sym->ret_type;
+
+	/* Update param count if src_sym is a definition */
+	if (is_def)
+	    dst_sym->param_count = src_sym->param_count;
 
 	return SYMTSTAT_OK;
 }
 
 /*=============
-  INIT AND FREE
+  Init and free
   =============*/
 
 symt_stat_t funct_init(funct_t **const func_table) {
@@ -199,7 +230,7 @@ symt_stat_t funct_free(funct_t *func_table) {
 }
 
 /*===================================
-  PREDICATES, FIND SYMBOL & UTILITIES
+  Predicates, find symbol & utilities
   ===================================*/
 
 symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_symbol_t *out_symbol) {
@@ -213,18 +244,18 @@ symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_sym
 	return SYMTSTAT_OK;
 }
 
-symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const int param_number,
-                                 symt_data_type_t *out_type) {
-	if (func_symbol == NULL || out_type == NULL || param_number < 0)
+symt_stat_t funct_nth_param_type(const funct_t *table, const funct_symbol_t *func_symbol,
+                                 const int param_number, symt_data_type_t *out_type) {
+	if (table == NULL || func_symbol == NULL || out_type == NULL || param_number < 0)
 		return SYMTSTAT_BAD_ARG;
 	if (param_number >= func_symbol->param_count)
 		return func_symbol->param_count <= 0 ? SYMTSTAT_FUNC_NO_PARAMS : SYMTSTAT_BAD_ARG;
 
 	/* Definition parameters have priority */
-	if (func_symbol->def_param_type_array != NULL)
-		*out_type = func_symbol->def_param_type_array[param_number];
+	if (funct_sym_has_def_sign(func_symbol))
+		*out_type = FUNCT_DEF_TYPE_OFFSET(table, func_symbol, param_number);
 	else
-		*out_type = func_symbol->call_param_type_array[param_number];
+		*out_type = FUNCT_CALL_TYPE_OFFSET(table, func_symbol, param_number);
 
 	return SYMTSTAT_OK;
 }
@@ -244,7 +275,7 @@ bool funct_exists(const funct_t *table, const char *ident) {
 }
 
 /*================
-  SYMBOL INSERTION
+  Symbol insertion
   ================*/
 
 symt_stat_t funct_insert_begin(funct_t *table, const bool is_def) {
@@ -253,12 +284,22 @@ symt_stat_t funct_insert_begin(funct_t *table, const bool is_def) {
 	if (table->state_insert)
 		return SYMTSTAT_BAD_STATE;
 
-	/* Start with an empty slate */
-	table->pending_symbol = UNDEFINED_SYMBOL;
+	/* Go back to the first free logical slot in the parameter arrays, enter insertion state to true */
+	table->call_arr_im_count = table->call_arr_count;
+	table->def_arr_im_count = table->def_arr_count;
 	table->state_insert = true;
 	table->is_insert_definition = is_def;
-	table->call_arr_im_count = table->call_arr_count; /* sync the indeces */
-	table->def_arr_im_count = table->def_arr_count;
+
+	/* Initialize pending symbol */
+	table->pending_symbol = UNDEFINED_SYMBOL;
+
+	/* We know that parameters will start here, they're just invalid or empty */
+	table->pending_symbol.def_array_offset = (int)table->def_arr_im_count;
+	table->pending_symbol.has_def_sign = is_def;
+
+	table->pending_symbol.call_array_offset = (int)table->call_arr_im_count;
+	table->pending_symbol.has_call_sign = !is_def;
+
 	return SYMTSTAT_OK;
 }
 
@@ -268,25 +309,19 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
 	if (!table->state_insert)
 		return SYMTSTAT_BAD_STATE;
 
-	/* First parameter (param_count would be 0 instead of 1 without this test) */
+	/* First parameter (param_count would be 0, i.e. "no params", instead of 1 without this test) */
 	if (table->pending_symbol.param_count < 0)
 		table->pending_symbol.param_count = 0;
 	table->pending_symbol.param_count++;
 
 	/* Function definition symbol */
 	if (table->is_insert_definition) {
-		if (table->pending_symbol.def_param_type_array == NULL)
-			table->pending_symbol.def_param_type_array = table->def_type_array + table->def_arr_count;
-
 		if (funct_append_def_type(table, param_type))
 			return SYMTSTAT_BAD_ALLOC;
 		return SYMTSTAT_OK;
 	}
 
 	/* Function call symbol */
-	if (table->pending_symbol.call_param_type_array == NULL)
-		table->pending_symbol.call_param_type_array = table->call_type_array + table->call_arr_count;
-
 	if (funct_append_call_type(table, param_type))
 		return SYMTSTAT_BAD_ALLOC;
 	return SYMTSTAT_OK;
@@ -316,7 +351,7 @@ symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_
 	/* Nothing was retrieved - new symbol :) */
 	if (!HTBL_RETRIEVE(table->scope, ident, existing_sym)) {
 		if (HTBL_INSERT(table->scope, ident, &table->pending_symbol) != HTBLSTAT_OK)
-			return SYMTSTAT_BAD_ALLOC; /* This _doesn't_ end the insert state */
+			return SYMTSTAT_BAD_ALLOC; /* Insertion state still pending */
 
 		result = SYMTSTAT_OK;
 		goto EXIT_CLEANUP;
@@ -328,33 +363,38 @@ symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_
 		goto EXIT_UPDATE;
 	}
 	/* Wrong signatures */
-	if ((result = funct_compare_sym_signatures(&existing_sym, pending_sym)) != SYMTSTAT_OK)
+	if ((result = funct_compare_sym_signatures(table, &existing_sym, pending_sym)) != SYMTSTAT_OK)
 		goto EXIT_UPDATE;
 
-	if (table->is_insert_definition) { /* Function definition */
-		                               /* Definition already exists (redefinition is not allowed) */
-		if (existing_sym.def_param_type_array != NULL) {
-			result = SYMTSTAT_BAD_ARG;
+	if (table->is_insert_definition) {
+		/* Function definition */
+		/* Definition already exists (redefinition is not allowed) */
+		if (funct_sym_has_def_sign(&existing_sym)) {
+			result = SYMTSTAT_FUNC_REDEFINITION;
 			goto EXIT_UPDATE;
 		}
 
-		/* Undefined return type or mismatched return types */
-		if (pending_sym->ret_type == SYMT_TYPE_UNDEFINED || existing_sym.ret_type != pending_sym->ret_type) {
+		/* Undefined definition return, or defined call return type mismatch */
+		if ((existing_sym.ret_type != pending_sym->ret_type &&
+		     existing_sym.ret_type != SYMT_TYPE_UNDEFINED) ||
+		    pending_sym->ret_type == SYMT_TYPE_UNDEFINED) {
 			result = SYMTSTAT_FUNC_BAD_RETURN;
 			goto EXIT_UPDATE;
 		}
-	} else { /* Function call */
-		     /* Previous call has a defined return type which differs from pending symbol */
-		if (existing_sym.ret_type != SYMT_TYPE_UNDEFINED && existing_sym.ret_type != pending_sym->ret_type) {
+	} else {
+		/* Function call */
+		/* Existing and pending symbols have defined returns that do not match */
+		if (existing_sym.ret_type != SYMT_TYPE_UNDEFINED && pending_sym->ret_type != SYMT_TYPE_UNDEFINED &&
+		    existing_sym.ret_type != pending_sym->ret_type) {
 			result = SYMTSTAT_FUNC_BAD_RETURN;
 			goto EXIT_UPDATE;
 		}
 	}
 
 EXIT_UPDATE:
-	funct_copy_update_symbol(&existing_sym, pending_sym);
+	funct_copy_update_symbol(&existing_sym, pending_sym, table->is_insert_definition);
 	if (HTBL_INSERT(table->scope, ident, &existing_sym) != HTBLSTAT_OK)
-		return SYMTSTAT_BAD_ALLOC; /* This _doesn't_ end the insert state */
+		return SYMTSTAT_BAD_ALLOC; /* Insertion state still pending */
 
 EXIT_CLEANUP:
 	table->state_insert = false;

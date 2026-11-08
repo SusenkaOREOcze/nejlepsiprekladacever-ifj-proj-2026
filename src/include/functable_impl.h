@@ -17,7 +17,7 @@
 #include <stdlib.h>
 
 /*==========
-  DATA TYPES
+  Data types
   ==========*/
 
 DEFTYPE_HASHTABLE(funct_symbol_t) funct_search_table_t;
@@ -55,7 +55,7 @@ struct Functable {
 };
 
 /*=========
-  FUNCTIONS
+  Functions
   =========*/
 
 /**
@@ -86,24 +86,64 @@ int funct_append_def_type(funct_t *table, const symt_data_type_t type);
 int funct_append_call_type(funct_t *table, const symt_data_type_t type);
 
 /**
-   Compare the function signature of two symbols. Takes the lowest of the symbol's parameter counts to ensure
-   array bounds are respected.
+   Compare the function signature of two symbols. Shortest parameter array match first.
 
+   @param table The table which contains both compared symbols.
    @param base_sym The symbol to compare to.
    @param comp_sym The symbol to compare.
    @returns SYMTSTAT_OK if symbol signatures match, SYMTSTAT_FUNC_DIFF_CALL_SIGN if compared symbol's
    signatures differ from base call sign. and base def signature doesn't exist, SYMTSTAT_FUNC_DIFF_DEF_SIGN if
-   compared symbol's signatures differ from base def signature, or an error.
+   compared symbol's signatures differ from base def signature or SYMTSTAT_BAD_ARG if called with
+   uninitialized symbols or bad arguments.
 */
-symt_stat_t funct_compare_sym_signatures(const funct_symbol_t *base_sym, const funct_symbol_t *comp_sym);
+symt_stat_t funct_compare_sym_signatures(const funct_t *table, const funct_symbol_t *base_sym,
+                                         const funct_symbol_t *comp_sym);
 
 /**
-   Update a function symbol without overwriting existing data.
+   Update a function symbol.
+
+   Depending on if the source symbol is a definition or a call symbol, the destination symbol is updated or
+   overwritten respectively.
 
    @param dst_sym The destination symbol (the symbol to update).
    @param src_sym The source symbol (the symbol to draw data from).
-   @returns SYMTSTAT_OK on success, or an error.
+   @param is_def Specifies if the source symbol is a definition symbol.
+   @returns SYMTSTAT_OK on success or SYMTSTAT_BAD_ARG when the arguments don't make sense.
 */
-symt_stat_t funct_copy_update_symbol(funct_symbol_t *dst_sym, const funct_symbol_t *src_sym);
+symt_stat_t funct_copy_update_symbol(funct_symbol_t *dst_sym, const funct_symbol_t *src_sym,
+                                     const bool is_def);
+
+/**
+   A predicate for asserting if the given symbol has a definition signature or not.
+
+   @param sym The symbol to test.
+   @returns true if the symbol has a valid definition signature, or false if not or if the argument is bad.
+*/
+inline bool funct_sym_has_def_sign(const funct_symbol_t *sym) {
+	if (sym == NULL)
+		return false;
+	return sym->has_def_sign && sym->param_count >= 0 && sym->def_array_offset >= 0;
+}
+
+/**
+   A predicate for asserting if the given symbol signed the contract that states "Thou shalt have an
+   indisputably valid call signature".
+
+   @param sym The symbol to test.
+   @returns true if the symbol has a valid call signature, or false if not or if the argument is bad.
+*/
+inline bool funct_sym_has_call_sign(const funct_symbol_t *sym) {
+	if (sym == NULL)
+		return false;
+	return sym->has_call_sign && sym->param_count >= 0 && sym->call_array_offset >= 0;
+}
+
+#ifndef UNIT_UNDER_TEST
+
+/* I beg you to compile with -O2 */
+extern inline bool funct_sym_has_def_sign(const funct_symbol_t *sym);
+extern inline bool funct_sym_has_call_sign(const funct_symbol_t *sym);
+
+#endif /* UNIT_UNDER_TEST not defined */
 
 #endif

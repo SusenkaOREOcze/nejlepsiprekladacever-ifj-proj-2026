@@ -62,8 +62,8 @@ struct Hashtable {
    A set of options used for adjusting the behavior of the htbl_find_entry() function.
 */
 enum HashtableFindOptions {
-	HTBL_FIND_VALID = 0,
-	HTBL_FIND_INVALID,
+	HTBL_FIND_VALID = 0, //!< Find only entries with matching keys.
+	HTBL_FIND_INVALID,   //!< Find matching keys OR an invalid entry (whichever comes first).
 };
 
 /*=========
