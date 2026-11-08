@@ -3,15 +3,14 @@
  * @author xkralil00 (SusenkaOREOcze)
  * @date 2026-10-10
  * @brief Alternative finite-state scanner for IFJ26 terminals.
+ *
+ * @details The diagram shows the state machine for the lexer.
+ *
+ * Scanner diagram: \dotfile lexer_automaton.dot "Lexer automaton"
  */
 
-//
-//	TODO: Cleanup the copilot comments, because some of them are not really usefull.
-//	TL;DR: yes copilot is used as a commenting tool.. because "laziness"
-//
-
 #include <stdint.h>
-#include <stdlib.h>
+#include <stdio.h>
 
 #include "include/lexer_internal.h"
 
@@ -63,7 +62,7 @@ static bool is_digit(int character) { return character >= '0' && character <= '9
 /**
  * @brief Grows a lexeme builder for a requested number of chars.
  *
- * @param lexer Lexer receiving an allocation error.
+ * @param lexer Lexer requesting more space.
  * @param builder Builder to grow.
  * @param needed Required capacity, including the NULL terminator.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
@@ -100,7 +99,7 @@ static lexer_result_t builder_grow(lexer_t *lexer, text_builder_t *builder, size
 /**
  * @brief Appends one character to a lexeme builder.
  *
- * @param lexer Lexer receiving an allocation error.
+ * @param lexer Lexer appending to the builder.
  * @param builder Builder to append to.
  * @param character Character to append.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
@@ -111,6 +110,10 @@ static lexer_result_t builder_append(lexer_t *lexer, text_builder_t *builder, in
 		return LEXER_RESULT_MEMORY_ERROR;
 	}
 
+	// Eating too much cake is the sin of gluttony.
+	// However, eating too much pie is ok because
+	//
+	// the Sin of Pi is 0.
 	lexer_result_t result = builder_grow(lexer, builder, builder->length + 2);
 	if (result != LEXER_RESULT_OK) {
 		return result;
@@ -125,8 +128,8 @@ static lexer_result_t builder_append(lexer_t *lexer, text_builder_t *builder, in
 /**
  * @brief Transfers built text to its future token owner.
  *
- * @param builder The noble builder, relinquishing dominion over its parchment.
- * @return Pointer to the former builder text.
+ * @param builder The noble builder, relinquishing dominion over its text.
+ * @return Pointer to the text which hath been liberated from its former master.
  */
 static char *builder_finish(text_builder_t *builder) {
 	char *text = builder->data;
@@ -151,7 +154,7 @@ static void builder_destroy(text_builder_t *builder) {
 /**
  * @brief Consumes the stored input character and reads the next one.
  *
- * @param lexer Lexer whose input state to advance.
+ * @param lexer Lexer whose input to advance.
  * @return LEXER_RESULT_OK on success, otherwise an I/O error.
  */
 static lexer_result_t advance_input(lexer_t *lexer) {
@@ -159,6 +162,8 @@ static lexer_result_t advance_input(lexer_t *lexer) {
 		return LEXER_RESULT_OK;
 	}
 
+	// Check for overflow of the source position counters before consuming the input character.
+	// The file has to many lines or columns, we cannot count them anymore.
 	int consumed = lexer->input;
 	if ((consumed == '\n' && lexer->line == SIZE_MAX) || (consumed != '\n' && lexer->column == SIZE_MAX)) {
 		lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "source position is too large");
@@ -167,11 +172,14 @@ static lexer_result_t advance_input(lexer_t *lexer) {
 
 	lexer->input = fgetc(lexer->source);
 
+	// There seems to be a problem.
 	if (lexer->input == EOF && ferror(lexer->source)) {
 		lexer_set_error(lexer, LEXER_RESULT_IO_ERROR, "cannot read source input");
 		return lexer->error.code;
 	}
 
+	// For those wondering why ++line and not line++;
+	// It doesnt matter.
 	if (consumed == '\n') {
 		++lexer->line;
 		lexer->column = 1;
@@ -214,6 +222,7 @@ static lexer_result_t take_input(lexer_t *lexer, text_builder_t *builder) {
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unexpected end of input");
 		return lexer->error.code;
 	}
+	// Imagine reading a book, and it suddenly ends in the middle of a word. Good cliffhanger.
 
 	lexer_result_t result = builder_append(lexer, builder, lexer->input);
 	if (result != LEXER_RESULT_OK) {
@@ -225,6 +234,7 @@ static lexer_result_t take_input(lexer_t *lexer, text_builder_t *builder) {
 
 /**
  * @brief Consumes the current input character without retaining it.
+ * It just means, SKIP.
  *
  * @param lexer Lexer to advance.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
@@ -249,6 +259,8 @@ static lexer_result_t consume_input(lexer_t *lexer) {
 static void make_token(token_t *out_token, token_type_t type, token_location_t location,
                        text_builder_t *builder) {
 	size_t length = builder->length;
+
+	// Idk but, the recognized terminal type sounds like some kind of cancer being discovered.
 
 	*out_token = (token_t){
 	    .type = type,
@@ -281,7 +293,7 @@ static void make_layout_token(token_t *out_token, token_type_t type, token_locat
  * @return LEXER_RESULT_OK on success, otherwise an allocation error.
  */
 static lexer_result_t grow_indentation_stack(lexer_t *lexer) {
-	// For those that do not know, we check the stack capacity before growing.
+	// For those that do not know (me), we check the stack capacity before growing.
 	if (lexer->indent_count + 1 < lexer->indentation_capacity) {
 		return LEXER_RESULT_OK;
 	}
@@ -327,6 +339,7 @@ static lexer_result_t skip_line_comment(lexer_t *lexer) {
 
 	// Skip the comment text until EOF or LF, but do not consume the LF.
 	while (lexer->input != EOF && lexer->input != '\n') {
+		// dont i have a function for this? oh.. nope.. but i could... nah
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
@@ -379,6 +392,7 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline,
 			*contains_newline = true;
 		}
 
+		// oh its here again...
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
@@ -387,7 +401,7 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline,
 		// Handle nested block comments, which are allowed.
 		if (lexer->input == '/' && peek_input(lexer) == '*') {
 			if (lexer->comment_depth == SIZE_MAX) {
-				lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "block comment nesting is too deep");
+				lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "block comment nesting is too deep >///<");
 				return lexer->error.code;
 			}
 
@@ -419,6 +433,7 @@ static lexer_result_t skip_block_comment(lexer_t *lexer, bool *contains_newline,
 			continue;
 		}
 
+		// Consume any other character inside the comment.
 		result = consume_input(lexer);
 		if (result != LEXER_RESULT_OK) {
 			return result;
@@ -470,6 +485,7 @@ static lexer_result_t finish_multiline_comment_line(lexer_t *lexer) {
  * @return LEXER_RESULT_OK on success, otherwise a lexical error.
  */
 static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *out_token) {
+	// In short, if the indentation stack is invalid, we cannot continue lexing.
 	if (lexer->indentation_widths == NULL || lexer->indentation_capacity == 0 ||
 	    lexer->indent_count >= lexer->indentation_capacity) {
 		lexer_set_error(lexer, LEXER_RESULT_INVALID_ARGUMENT, "invalid indentation state");
@@ -479,12 +495,13 @@ static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *ou
 	size_t current_width = lexer->indentation_widths[lexer->indent_count];
 	token_location_t location = {lexer->line, lexer->column};
 
-	// If the current line's indentation matches the previous line's, nothing is emitted.
+	// If the current line's indentation matches the previous line's, nothing happens.
 	if (width == current_width) {
 		return LEXER_RESULT_OK;
 	}
 
-	// If the current line's indentation is greater than the previous line's, push the new width onto the stack.
+	// If the current line's indentation is greater than the previous line's, push the new width onto the
+	// stack.
 	if (width > current_width) {
 		lexer_result_t result = grow_indentation_stack(lexer);
 		if (result != LEXER_RESULT_OK) {
@@ -524,7 +541,7 @@ static lexer_result_t emit_indentation(lexer_t *lexer, size_t width, token_t *ou
  * Blank and comment-only lines do not affect the width. The caller decides
  * whether the width opens a block or continues a line inside brackets.
  *
- * @param lexer Lexer positioned at the start of a physical line.
+ * @param lexer Lexer to use.
  * @param width Leading spaces on the next meaningful line, or zero at EOF.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
@@ -610,6 +627,7 @@ static lexer_result_t read_line_prefix(lexer_t *lexer, size_t *width) {
 		}
 
 		// An unfinished blank line at EOF has no indentation to validate.
+		// Example: "     EOF" is a blank line with 5 spaces.
 		if (lexer->input == EOF) {
 			*width = 0;
 			return LEXER_RESULT_OK;
@@ -624,10 +642,15 @@ static lexer_result_t read_line_prefix(lexer_t *lexer, size_t *width) {
 	}
 }
 
+/*
+    What is a logical line? A logical line is a sequence of physical lines that are connected
+    together to form a single logical unit of code.
+*/
+
 /**
  * @brief Emits an indentation token when a meaningful logical line changes depth.
  *
- * @param lexer Lexer to process.
+ * @param lexer Lexer to use.
  * @param out_token Receives a generated indentation token, if any.
  * @param emitted Receives true when a token was generated.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
@@ -636,6 +659,7 @@ static lexer_result_t prepare_line_start(lexer_t *lexer, token_t *out_token, boo
 	size_t width;
 	*emitted = false;
 
+	// Read the next meaningful line and count its leading spaces.
 	lexer_result_t result = read_line_prefix(lexer, &width);
 	if (result != LEXER_RESULT_OK || lexer->input == EOF) {
 		return result;
@@ -644,12 +668,23 @@ static lexer_result_t prepare_line_start(lexer_t *lexer, token_t *out_token, boo
 	lexer->at_line_start = false;
 	lexer->logical_line_indent = width;
 
+	// This is where the indentation token is emitted, if any.
 	result = emit_indentation(lexer, width, out_token);
 	if (result == LEXER_RESULT_OK) {
 		*emitted = out_token->type == TOKEN_INDENT || out_token->type == TOKEN_DEDENT;
 	}
 	return result;
 }
+
+/*
+    What is a continuation line? A continuation line is a physical line that continues the logical line
+    that precedes it. Continuation lines are used to split long logical lines into multiple physical lines
+
+    Example:
+        # This is a logical line that continues onto the next physical line
+        print("This is a long logical line that continues onto the next physical line"
+              " and even onto the next one")
+*/
 
 /**
  * @brief Checks that a continuation line is indented past its logical line.
@@ -664,6 +699,7 @@ static lexer_result_t prepare_parenthesized_line_start(lexer_t *lexer) {
 		return result;
 	}
 
+	// A continuation line must be indented beyond its logical line.
 	if (width <= lexer->logical_line_indent) {
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR,
 		                "continuation line is not indented beyond its logical line");
@@ -677,7 +713,7 @@ static lexer_result_t prepare_parenthesized_line_start(lexer_t *lexer) {
 /**
  * @brief Scans an identifier and determines its type.
  *
- * @param lexer Lexer at an identifier start.
+ * @param lexer Lexer that READS.
  * @param out_token Receives the recognized token.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
@@ -685,6 +721,7 @@ static lexer_result_t scan_identifier(lexer_t *lexer, token_t *out_token) {
 	token_location_t location = {lexer->line, lexer->column};
 	text_builder_t builder = {0};
 
+	// The first character is already known to be a valid identifier start.
 	while (is_identifier_part(lexer->input)) {
 		lexer_result_t result = take_input(lexer, &builder);
 		if (result != LEXER_RESULT_OK) {
@@ -703,7 +740,7 @@ static lexer_result_t scan_identifier(lexer_t *lexer, token_t *out_token) {
 }
 
 /**
- * @brief Scans digits with optional runs of underscores between digits.
+ * @brief Scans digits with optional number of underscores between digits.
  *
  * @param lexer Lexer to use.
  * @param builder Builder receiving source text.
@@ -714,7 +751,7 @@ static lexer_result_t scan_digit_sequence(lexer_t *lexer, text_builder_t *builde
 	bool ends_with_underscore = false;
 	*has_digits = false;
 
-	// A run of underscores is valid only after a digit and before another digit.
+	// Underscores are valid only after a digit and before another digit.
 	while (is_digit(lexer->input) || lexer->input == '_') {
 		if (lexer->input == '_') {
 			if (!*has_digits) {
@@ -859,12 +896,14 @@ cleanup:
 /**
  * @brief Reads an ordinary string after its opening quote.
  *
- * @param lexer Lexer positioned at the first body character.
- * @param builder Receives the exact source spelling.
+ * @param lexer Lexer to use.
+ * @param builder Receives the exact string.
  * @return LEXER_RESULT_OK after the closing quote, otherwise an error code.
  */
 static lexer_result_t scan_ordinary_string_body(lexer_t *lexer, text_builder_t *builder) {
+	// The opening quote was already consumed, so the body starts with the next character.
 	while (lexer->input != EOF && lexer->input != '"' && lexer->input != '\n' && lexer->input != '\r') {
+		// The five IFJ26 escape sequences are: \\, \", \n, \r, and \t.
 		if (lexer->input == '\\') {
 			lexer_result_t result = take_input(lexer, builder);
 			if (result != LEXER_RESULT_OK) {
@@ -879,6 +918,7 @@ static lexer_result_t scan_ordinary_string_body(lexer_t *lexer, text_builder_t *
 			}
 		}
 
+		// we saw this somewhere already...
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
@@ -890,6 +930,7 @@ static lexer_result_t scan_ordinary_string_body(lexer_t *lexer, text_builder_t *
 		}
 	}
 
+	// The string must be terminated by a closing quote.
 	if (lexer->input != '"') {
 		lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "unterminated string");
 		return lexer->error.code;
@@ -901,19 +942,25 @@ static lexer_result_t scan_ordinary_string_body(lexer_t *lexer, text_builder_t *
 /**
  * @brief Reads a raw multiline string after its opening triple quote.
  *
- * @param lexer Lexer positioned at the first body character.
- * @param builder Receives the exact source spelling.
+ * @param lexer Lexer to use.
+ * @param builder Receives the exact string.
  * @return LEXER_RESULT_OK after three closing quotes, otherwise an error code.
  */
 static lexer_result_t scan_multiline_string_body(lexer_t *lexer, text_builder_t *builder) {
 	size_t quote_count = 0;
 
+	// The opening """ was already consumed, so the body starts with the next character.
 	while (lexer->input != EOF) {
+		// Yet another non-ASCII character check.
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
 		}
+		// i should move it to its own function :/
 
+		// Count consecutive quotes to detect the closing triple quote.
+		// doesnt this count """abc"de"fg" ??
+		// no, look there is the : 0, which resets the counter.
 		quote_count = lexer->input == '"' ? quote_count + 1 : 0;
 		lexer_result_t result = take_input(lexer, builder);
 		if (result != LEXER_RESULT_OK) {
@@ -932,7 +979,7 @@ static lexer_result_t scan_multiline_string_body(lexer_t *lexer, text_builder_t 
 /**
  * @brief Scans a normal or triple-quoted multiline string.
  *
- * @param lexer Lexer at an opening quote.
+ * @param lexer Lexer to enslave.
  * @param out_token Receives the recognized token.
  * @return LEXER_RESULT_OK on success, otherwise an error code.
  */
@@ -944,6 +991,7 @@ static lexer_result_t scan_string(lexer_t *lexer, token_t *out_token) {
 		goto cleanup;
 	}
 
+	// Check if the string is a multiline string by looking for a second quote.
 	bool multiline = lexer->input == '"' && peek_input(lexer) == '"';
 	if (multiline) {
 		// The first opening quote was already consumed.
@@ -956,6 +1004,7 @@ static lexer_result_t scan_string(lexer_t *lexer, token_t *out_token) {
 			goto cleanup;
 		}
 
+		// We have consumed all three opening quotes, so we can now scan the multiline string body.
 		result = scan_multiline_string_body(lexer, &builder);
 	} else {
 		result = scan_ordinary_string_body(lexer, &builder);
@@ -975,6 +1024,8 @@ cleanup:
 
 /**
  * @brief Scans the @main declaration.
+ *
+ * @note It was called anotation at the beginning, thats why it is anotation everywhere.
  *
  * @param lexer Lexer to use.
  * @param out_token Receives TOKEN_MAIN_ANNOTATION.
@@ -1025,13 +1076,17 @@ cleanup:
 static lexer_result_t update_parenthesis_depth(lexer_t *lexer, token_type_t type) {
 	if (type == TOKEN_LPAREN || type == TOKEN_LBRACKET) {
 		if (lexer->parenthesis_depth == SIZE_MAX) {
-			lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "parenthesis nesting is too deep");
+			lexer_set_error(lexer, LEXER_RESULT_MEMORY_ERROR, "parenthesis nesting is too deep >///<");
 			return lexer->error.code;
 		}
+		// we are checking opening brackets, so we increment the depth.
 		++lexer->parenthesis_depth;
+
 	} else if ((type == TOKEN_RPAREN || type == TOKEN_RBRACKET) && lexer->parenthesis_depth != 0) {
+		// The opposite from the previous case.
 		--lexer->parenthesis_depth;
 	}
+
 	return LEXER_RESULT_OK;
 }
 
@@ -1159,6 +1214,7 @@ static lexer_result_t scan_symbol(lexer_t *lexer, token_t *out_token) {
 	if (result != LEXER_RESULT_OK) {
 		goto cleanup;
 	}
+
 	make_token(out_token, type, location, &builder);
 	return LEXER_RESULT_OK;
 
@@ -1178,9 +1234,11 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 	if (lexer == NULL || out_token == NULL) {
 		return LEXER_RESULT_INVALID_ARGUMENT;
 	}
+
+	// I am not explaining this...
 	if (lexer->source == NULL || lexer->indentation_widths == NULL || lexer->indentation_capacity == 0 ||
 	    lexer->indent_count >= lexer->indentation_capacity || lexer->indentation_widths[0] != 0 ||
-	    lexer->pending_dedents >= lexer->indentation_capacity) {
+	    lexer->pending_dedents >= lexer->indentation_capacity) { // here's the end of the IF
 		lexer_set_error(lexer, LEXER_RESULT_INVALID_ARGUMENT, "invalid lexer state");
 		return lexer->error.code;
 	}
@@ -1216,7 +1274,7 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 
 		// Validate that the input character is ASCII.
 		// why not use is_ascii_letter() ?
-		// ehm, that checks only letters :3 te-hee
+		// ehm, that checks only letters :3 te-heew
 		if (lexer->input > 127) {
 			lexer_set_error(lexer, LEXER_RESULT_LEXICAL_ERROR, "source contains a non-ASCII character");
 			return lexer->error.code;
@@ -1251,7 +1309,7 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 			}
 		}
 
-		// Skip whitespace and comments until a non-whitespace character is found.
+		// Skip whitespace
 		if (lexer->input == ' ' || lexer->input == '\t') {
 			lexer_result_t result = consume_input(lexer);
 			if (result != LEXER_RESULT_OK) {
@@ -1346,3 +1404,41 @@ lexer_result_t lexer_scan_token(lexer_t *lexer, token_t *out_token) {
 		return LEXER_RESULT_OK;
 	}
 }
+
+/* Gandalf the wizard of code
+::::::--=---=++#@@@@@@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+::::::::---==+*%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+::-------:::--=#%%%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+:--------::::..=*##%#*##*#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+::-----:-:::::::-=**+=--*@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@
+:-=--:.::--------=++*@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*==-==-:...   .....:::-==--=---=--=+#@@@@@@
+--==---:-----==*@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%%**++==:..........   ..      .....:::::::::--------+@@
+:-==-------+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#**+=-====-------==--::............        ...::::::::::::::::-=
+::==---*@@@@@@@@@@@@@@@@@@@@@@@@@%%**+====---==+***###+*****#%###*+=-:...........         ....:::::::::..::::
+--=+@@@@@@@@@@@@@@@@@@%*%**+===-----:.........:-=+#%%@##%%#%@@#+-::.:............:..       ......::::::::...:
+*@@@@@@@@@@@@@@@%*==--::--:=:.. ..--::.....:---:-==*#@*%%%##@%##%%%%#++=-::::.....:.         ........:::::::.
+@@@@@@@@%*=-=--:..   ..::--......:-::::-=**###%@%%#**+#%%%%*++*#####%@%%#+::-:.:..... .     ........:::.:::::
+%*+==--.            .:-==:.. ...::-:::-=***+-:--==+=--===+**===-...=:.:*%#=--:........         ........::....
+.   .     . .        =+=:.. ..::::--:-++:.:-==----::::::::-======+*%%%#*+#+---:...::..     .  . .............
+                   .==+-... ....----:-===#*##%%#*+--:::--=+++****#%%%@%%%#*===-........        . ............
+            .     .-=+=:...   ..:--:--++==+****+==-----:-=++*#**####%%%%#%%*+=....::::..         ............
+  . .            .:--=-:..    ...--:-=++*****++=---=-::::=++=*#######%%@@%%#**=:....:-..            ....  ..
+                .:-.--:.      ...:--=+****++++++**-:--:-=+***+*+#@@%%%%@@%##**+==-...:-.       .   .....   ..
+     .         .::::::..   ......:-=+****+***##%#::::-=+**#%%#*++*@@@@@@@%####**++=:.--:.       ......
+ .             :::..:...  ........-=+****##%%%%#=-**++*#%%%@@%##%%%@@@@@%%%%####***=.:=-.     ....  ...
+              :-:..:...  .........:-+****#%@@@%*++*#####%@@@@%%@@@@@@@@@@%####**+***--=-:.     .. .....    .
+             .=:..:.... ..........:-+****##%%%#%##****##%@@@@@@@@@@@@@@@@%%%%%#*+***--=--.. . .        .....=
+   .         =:.......  ..:::......:-=+***#%%%%%%%%%%%##%%@@@@@@@@@@@@@@%@%@###**#%+=-=+=:       .   ...:+***
+    .      .-:........  .:::::::....:-=+**%@%%@@@@@@@@@%%@@@@%@@@@@@@@@@@@@%**####%#+=**-.         .:#%*+****
+:         .::.....  .  .::::=--:....:--=*#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#**+**%%%%%#+-:. . ..:**-:--=**#%%
+=+=-:.. ..:::.....   ..:-:---:..::..:::=*#@@@@@@#=*%@@@@%%@@@@@@@@@@@@@@%%%%**###*#%@@%*+-.:+@@#*:.:-=+***###
+=-=--=+#*+=-::...... ......:-:.::::----+#%@@@@@@%*:  .:--::::. :#@@@@@@@@#*+++**##%%@@@%%@@@#++*####**#*+++++
+=++=+**%##**=-:.......:...---:--===---=+#@@@@@@@%#*=-=--=-:-=*#%@@@@@@@@@@#*+++*%@@%@@%@@@@@@*=-========-----
+*##**+*%%#*=----:::.-.:..:=+-=======-=+#@@@@@@@%#%#######%%%@@@@@@@@@@@@@@@#**#%@@@@@@@@@@@@@@*---====+==---:
+%*######**=-::--:--::=:.:-*=-=++++*+=+*#%@@@@@#%####*%%%%%%%@@@@@@@@@@@@@%%%%%%@@@@%@@@@@@@@@@@+=::---------:
+@%%%%#=+=+==. -::::-----+*+-==***=****##%@@@@@@%%%##****#%%%%@@%%%@@%#@@@@@@%@@@@@%%@%@@@@@@@@@@+-::...--:...
+%%@=--+=++-:   :.::.+++**=====*#+##%%####%@%@@@@%##*++++++*%%%%#%#%%*#@@@@@@@@@@@@@@@@%@@@@@@@@##+::...:-----
+%#--======-:  ..:...=+*#+====+*#####***#%##*#@@@%#%#+=::-=+####%%####*@@@@@@@@@@@@@@@@@@@@@@@@@@%*=:::::.....
+=:::--+=-::.. ......:+#*===++***#%+#####%%%#@@@@%@#%#**+*#%%#@@@@@@%%%@@@@@@@@@@@@@@@@@@@@@@@@@@%##*=-:::.  .
+.....:==--:.. .......:*+++++*##*#**#*####%%%@@@@@%%%%%#%%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#*+--::::.:
+*/

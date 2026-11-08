@@ -8,7 +8,7 @@
  * @brief IFJ26 lexer interface.
  *
  * The lexer tokenizes the source program.
- * It works on demand, producing one token at a time.
+ * It works on demand, producing one current token and one next token at a time.
  */
 
 #include <stdbool.h>
@@ -50,14 +50,16 @@ typedef struct Lexer {
 	size_t column;
 	bool at_line_start;
 
-	 /**
+	/**
 	 * @brief Indentation and nesting tracking
 	 *
 	 * - indent count is the current depth of the indentation; index 0 is the base level
-	 * - parenthesis depth is the combined nesting depth of parentheses and brackets - lexer doesnt care if it is () [] [) (]
+	 * - parenthesis depth is the combined nesting depth of parentheses and brackets - lexer doesnt care if it
+	 * is () [] [) (]
 	 * - comment depth is the current depth of nested block comments
 	 * - indentation widths is a array of the indentation widths.
-	 * 		- that is, array where each element is the number of spaces at the start of a line, for each indentation level eg. [0, 4, 8]
+	 * 		- that is, array where each element is the number of spaces at the start of a line, for each
+	 * indentation level eg. [0, 4, 8]
 	 * - indentation capacity is the number of widths the array can hold, including the base level
 	 * 		- eg. 3 in the example above
 	 * - pending dedents is the number of DEDENT tokens remaining after the first one was emitted
@@ -66,8 +68,8 @@ typedef struct Lexer {
 	 *
 	 * When indentation increases, we push its width and emit an INDENT token.
 	 * When indentation decreases, we emit DEDENT tokens until the previous indentation level is reached.
-	 * Newlines inside parentheses or brackets are treated as continuation lines and do not reset the parenthesis depth.
-	 * Block comment depth increases and decreases while ...lexing nested comments.
+	 * Newlines inside parentheses or brackets are treated as continuation lines and do not reset the
+	 * parenthesis depth. Block comment depth increases and decreases while ...lexing nested comments.
 	 */
 	size_t indent_count;
 	size_t parenthesis_depth;
