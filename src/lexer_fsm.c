@@ -7,6 +7,22 @@
  * @details The diagram shows the state machine for the lexer.
  *
  * Scanner diagram: \dotfile lexer_automaton.dot "Lexer automaton"
+ *
+ * Differences from a standard finite automaton:
+ * - This is an extended deterministic automaton. A transition may also use a
+ *   condition in square brackets, such as the current indentation depth.
+ * - Lookahead checks the next input character without consuming it.
+ * - Counters track indentation, brackets, comment nesting, and trailing quotes.
+ *   The indentation widths are stored in a stack. These values are not part of
+ *   a standard finite automaton, but they are necessary for the implementation that wasused.
+ * - Identifier and number recognition uses regular expressions to match the entire token.
+ * - A regular expression on an edge is equivalent to a sequence of states and transitions, but it is more
+ * compact.
+ * - TOKEN and ERROR are return states of one lexer_scan_token() call. The next
+ *   call starts again in SCAN while keeping the stored counters.
+ * - One DEDENT transition represents one or more consecutive DEDENT tokens. The
+ *   implementation stores the remaining count and returns them on later calls.
+ * - [ASCII] means one ASCII byte. [^ASCII] means a byte outside that range.
  */
 
 #include <stdint.h>
@@ -986,6 +1002,8 @@ static lexer_result_t scan_multiline_string_body(lexer_t *lexer, text_builder_t 
 static lexer_result_t scan_string(lexer_t *lexer, token_t *out_token) {
 	token_location_t location = {lexer->line, lexer->column};
 	text_builder_t builder = {0};
+
+	// Gobble up the opening quote.
 	lexer_result_t result = take_input(lexer, &builder);
 	if (result != LEXER_RESULT_OK) {
 		goto cleanup;

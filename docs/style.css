@@ -1,0 +1,5 @@
+/* Keep generated Graphviz images within the documentation column. */
+.dotgraph img[src^="dot_"] {
+  max-width: 100%;
+  height: auto;
+}
