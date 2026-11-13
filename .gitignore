@@ -58,3 +58,8 @@ dkms.conf
 \#*#
 .#*
 *.*\~
+
+.vscode/
+build/
+.gdb_history
+src/tests/bin/

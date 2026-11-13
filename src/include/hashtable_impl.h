@@ -1,13 +1,9 @@
 /**
    @file hashtable_impl.h
-
    @author xbosakd00 (DasBean125)
-
    @date 2026-10-03
 
    @brief The private header file for the hashtable.c module.
-
-   The definitions of all the important stuff that make this data type tick.
 */
 
 #ifndef HTBL_IMPL_H
@@ -43,11 +39,6 @@ typedef struct HashtableEntry {
 
 /**
    A hash table with implicit entry chaining.
-
-   Behaves like a normal hash table where every entry key is hashed, then a modulo of this number and the
-   table size is taken, which computes the index of the given entry. When hash collisions occur (also called a
-   "synonymous entry"), the next closest free (NULL) index in the array is used to store the synonym (this is
-   the "implicit entry chaining" part).
 */
 struct Hashtable {
 	/**
@@ -71,15 +62,15 @@ struct Hashtable {
    A set of options used for adjusting the behavior of the htbl_find_entry() function.
 */
 enum HashtableFindOptions {
-	HTBL_FIND_VALID = 0,
-	HTBL_FIND_INVALID,
+	HTBL_FIND_VALID = 0, //!< Find only entries with matching keys.
+	HTBL_FIND_INVALID,   //!< Find matching keys OR an invalid entry (whichever comes first).
 };
 
 /*=========
   FUNCTIONS
   =========*/
 
-#ifndef HTBL_TEST
+#ifndef UNIT_UNDER_TEST
 
 /**
    Calculate a hash of the passed string for use by the hash table.
@@ -88,7 +79,6 @@ enum HashtableFindOptions {
    is the DJB2 hash function.
 
    @param str The string to calculate the hash of.
-
    @returns the hash of the passed string.
 */
 inline size_t hashtable_hash_func(const char *str) {
@@ -103,38 +93,50 @@ inline size_t hashtable_hash_func(const char *str) {
 
 extern inline size_t hashtable_hash_func(const char *str);
 
-#else /* HTBL_TEST not defined */
+#endif /* UNIT_UNDER_TEST defined */
 
-htbl_entry_t *debug_htbl_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
-                                    const enum HashtableFindOptions opts);
+/**
+   Find an entry with the given key in the given hash table.
 
-size_t debug_calc_index_from_key(htbl_key_t key, const size_t size);
+   @param table The table to search through.
+   @param key The key to look for.
+   @param entry_index A pointer to a variable in which to store the index of the found entry. May be NULL.
 
-#endif /* HTBL_TEST defined */
+   @note If the given table is full and has no free (NULL) slot for a new entry, this parameter _will be
+   set to the size of the table_ (i.e., an invalid index). If the table is NULL, this value is set to
+   ULONG_MAX.
+
+   @param opts Options that adjust which entries may be retrieved (@see struct HashtableFindOptions).
+   @returns A pointer to the found entry, or NULL if the entry does not exist or if an error occurs.
+*/
+htbl_entry_t *hashtable_find_entry(const htbl_t *table, htbl_key_t key, size_t *entry_index,
+                                   const enum HashtableFindOptions opts);
+
+/**
+   Resize the table to a bigger or smaller size.
+
+   @param table A pointer to the table to change the size of.
+   @param new_size The new size of the table, in number of rows.
+   @returns HTBLSTAT_OK if the resize was successfull, HTBLSTAT_BAD_ARG with wrong arguments or
+   HTBLSTAT_BAD_ALLOC if allocation of the table failed.
+*/
+htbl_stat_t hashtable_resize(htbl_t **table, const size_t new_size);
 
 /**
    Calculate the index inside of the hash table array from the passed hash (or index).
 
-   @note Any function-like macro that has a parameter "hash_table" requires that variable to be of a type
-   defined by _DEF_HASHTABLE (i.e., a _union_). On the contrary, any function-like macro that has a parameter
-   "table" requires that variable to be of type htbl_t!
-
    @param table The hash table to calculate the array index of.
-
-   @param hash_or_index Typically a hash of the key of an entry, but may also be a number (because of modulo
-   arithmetic) representing the index inside the table. This is useful for offsets within the array.
-
+   @param hash_or_index Typically a hash of the key of an entry, but may also be an index.
    @returns the equivalent array index of the table for the given hash.
 */
-#define hashtable_calc_index(table, hash_or_index) (hash_or_index) % ((table)->size)
+#define HASHTABLE_CALC_INDEX(table, hash_or_index) (hash_or_index) % ((table)->size)
 
 /**
-   Calculate the load factor (the ratio between the number of entries and the table size) of the given table.
+   Calculate the load factor of the given table.
 
    @param table The table to calculate the load factor of. See the note in @see htbl_calc_index().
-
-   @returns A _float_ in the range <0.f, 1.f) representing the current load factor.
+   @returns A float in the range <0.f, 1.f) representing the current load factor.
 */
-#define hashtable_load_factor(table) (!(table)->size ? 0.0f : ((float)(table)->count) / (table)->size)
+#define HASHTABLE_LOAD_FACTOR(table) (!(table)->size ? 0.0f : ((float)(table)->count) / (table)->size)
 
 #endif /* hashtable_impl.h included */
