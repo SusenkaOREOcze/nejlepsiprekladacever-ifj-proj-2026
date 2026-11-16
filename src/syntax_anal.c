@@ -255,8 +255,10 @@ static size_t prec_top_terminal(const prec_stack_t *stack) {
  * @return true if the symbol ends an operand
  */
 static bool prec_is_operand_end(prec_terminal_t terminal) {
-	return terminal == PREC_ID || terminal == PREC_LIST || terminal == PREC_UNIT || terminal == PREC_RPAREN ||
-	       terminal == PREC_DOT || terminal == PREC_CALL;
+	/* LISTS disabled for now, PREC_LIST also ended an operand:
+	   terminal == PREC_LIST || */
+	return terminal == PREC_ID || terminal == PREC_UNIT || terminal == PREC_RPAREN || terminal == PREC_DOT ||
+	       terminal == PREC_CALL;
 }
 
 /**
@@ -292,15 +294,17 @@ static prec_input_t prec_classify(const syntax_parser_t *parser, prec_terminal_t
 
 	switch (token->type) {
 	case TOKEN_IDENTIFIER:
-		// after an operand only to until and by continue the expression, as range operators,
-		// and only inside parens like (1 to 5).toList, a for loop header parses its range itself
-		// any other identifier ends it and the caller decides if thats an error
+		/* identifier after an operand ends the expression and the caller decides if thats an error,
+		   a for loop header parses its to until and by itself */
 		if (!after_operand) {
 			input.terminal = PREC_ID;
-		} else if (depth > 0 && (token_is_identifier(token, "to") || token_is_identifier(token, "until") ||
-		                         token_is_identifier(token, "by"))) {
-			input.terminal = PREC_RANGE;
 		}
+		/* LISTS
+		else if (depth > 0 && (token_is_identifier(token, "to") || token_is_identifier(token, "until") ||
+		                         token_is_identifier(token, "by"))) {
+		    input.terminal = PREC_RANGE;
+		}
+		*/
 		break;
 	case TOKEN_INTEGER:
 	case TOKEN_DOUBLE:
@@ -313,11 +317,13 @@ static prec_input_t prec_classify(const syntax_parser_t *parser, prec_terminal_t
 			input.terminal = PREC_ID;
 		}
 		break;
+	/* LISTS
 	case TOKEN_TYPE_LIST:
 		if (!after_operand) {
-			input.terminal = PREC_LIST;
+		    input.terminal = PREC_LIST;
 		}
 		break;
+	*/
 	case TOKEN_LPAREN:
 		// after an operand its a call or list index, otherwise unit literal or grouping
 		if (after_operand) {
@@ -351,9 +357,11 @@ static prec_input_t prec_classify(const syntax_parser_t *parser, prec_terminal_t
 	case TOKEN_DIVIDE:
 		input.terminal = PREC_MUL;
 		break;
+	/* LISTS
 	case TOKEN_CONCAT:
 		input.terminal = PREC_ADD;
 		break;
+	*/
 	case TOKEN_LESS:
 	case TOKEN_LESS_EQUAL:
 	case TOKEN_GREATER:
@@ -485,14 +493,16 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 			break;
 		}
 		/* fallthrough */
-	case PREC_LIST: {
-		// semantic analyser: report the operand here, identifier literal or List,
-		// lexer frees the token text on next advance
-		if (!syntax_parser_advance(parser)) {
-			return false;
+		/* LISTS
+		   case PREC_LIST: */
+		{
+			/* semantic analyser: report the operand here, identifier or literal,
+			   lexer frees the token text on next advance */
+			if (!syntax_parser_advance(parser)) {
+				return false;
+			}
+			break;
 		}
-		break;
-	}
 	case PREC_UNIT: {
 		// semantic analyser: report unit literal here
 		// unit literal is one operand but two tokens
@@ -609,8 +619,9 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 
 	// operands are done when shifted, only unary and binary operators would be reported here
 	if (length == 1) {
-		valid = prec_item_is(&handle[0], PREC_ID) || prec_item_is(&handle[0], PREC_LIST) ||
-		        prec_item_is(&handle[0], PREC_UNIT);
+		/* LISTS
+		   prec_item_is(&handle[0], PREC_LIST) || */
+		valid = prec_item_is(&handle[0], PREC_ID) || prec_item_is(&handle[0], PREC_UNIT);
 	} else if (length == 2) {
 		if (handle[0].kind == PREC_ITEM_EXPRESSION &&
 		    (prec_item_is(&handle[1], PREC_DOT) || prec_item_is(&handle[1], PREC_CALL))) {
@@ -745,7 +756,8 @@ static bool expression_start(token_type_t type) {
 	case TOKEN_MULTILINE_STRING:
 	case TOKEN_TRUE:
 	case TOKEN_FALSE:
-	case TOKEN_TYPE_LIST:
+	/* LISTS
+	   case TOKEN_TYPE_LIST: */
 	case TOKEN_LPAREN:
 	case TOKEN_PLUS:
 	case TOKEN_MINUS:
@@ -759,7 +771,7 @@ static bool expression_start(token_type_t type) {
 /**
  * @brief parses a type
  *
- * List type for LISTS is List then the element type in square brackets
+ * List type for LISTS is commented out for now
  *
  * @param parser parser sitting on the type
  * @return true on success
@@ -778,10 +790,12 @@ static bool parse_type(syntax_parser_t *parser) {
 	case TOKEN_TYPE_UNIT:
 		// semantic analyser: report the type here
 		return syntax_parser_advance(parser);
+	/* LISTS
 	case TOKEN_TYPE_LIST:
 		// semantic analyser: report List here, element type comes next
 		return syntax_parser_advance(parser) && syntax_parser_expect(parser, TOKEN_LBRACKET) &&
 		       parse_type(parser) && syntax_parser_expect(parser, TOKEN_RBRACKET);
+	*/
 	default:
 		parser->failed = true;
 		return false;
@@ -1076,7 +1090,7 @@ static bool parse_value(syntax_parser_t *parser) {
  * @brief parses for loop generator, loop variable then left arrow then source
  *
  * grammar, <generator> -> ID LEFT_ARROW expr <gen_tail>
- * <gen_tail> -> <range> expr <step> | eps, eps is when the source is a List for LISTS
+ * <gen_tail> -> <range> expr <step>, eps when the source is a List is commented out until LISTS is back
  * <range> -> to | until, <step> -> by expr | eps
  *
  * @param parser parser sitting on the loop variable
@@ -1097,8 +1111,13 @@ static bool parse_generator(syntax_parser_t *parser) {
 	// expression parser stops at to and until outside parens, so the range is parsed here
 	token = syntax_parser_current(parser);
 	if (!token_is_identifier(token, "to") && !token_is_identifier(token, "until")) {
+		// without LISTS the source has to be a range, so to or until must follow
+		parser->failed = true;
+		return false;
+		/* LISTS
 		// semantic analyser: the source is a List
 		return true;
+		*/
 	}
 	// semantic analyser: range start done, report whether its to or until here
 	if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser)) {
