@@ -3,7 +3,7 @@ CC				:= gcc
 CLANG_TIDY		:= clang-tidy
 CLANG_FORMAT	:= clang-format
 
-CFLAGS			:= -std=gnu23 -Wall -Wextra -Wpedantic -g #-fsanitize=address
+CFLAGS			:= -std=gnu23 -Wall -Wextra -g -fsanitize=address
 CPPFLAGS		:= -Isrc/include #preprocessor flags, not C++, thoose are CXXFLAGS :/
 
 # Directories for tests and CMocka.
