@@ -1,8 +1,7 @@
-
 /**
- @file sem_funcs.h
- @author xmejtsj00 (kmejstr)
- @brief Built-in functions of IFJ26 and checking of function calls.
+  @file sem_funcs.h
+  @author xmejtsj00 (kmejstr)
+  @brief Built-in functions of IFJ26 and checking of function calls.
  */
 
 #ifndef SEM_FUNCS_H
@@ -12,15 +11,15 @@
 #include "sem_types.h"
 
 /**
-  @brief Placeholder type "Any" of a built-in function parameter (pint, toStr).
-  It is used only inside the semantic analysis and is never stored in a symbol table.
+   @brief Placeholder type "Any" of a built-in function parameter (pint, toStr).
+   It is used only inside the semantic analysis and is never stored in a symbol table.
  */
 #define SEM_TYPE_ANY SYMT_TYPE_UNDEFINED
 
 #define SEM_BUILTIN_MAX_PARAMS 3
 
 /**
-  @brief Signature of one built-in function (section 4 of the specification, readBoolean fromBOOLTHEN).
+   @brief Signature of one built-in function (section 4 of the specification, readBoolean fromBOOLTHEN).
  */
 typedef struct SemBuiltin {
 	const char *name;

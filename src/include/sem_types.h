@@ -1,4 +1,3 @@
-
 /**
    @file sem_types.h
    @author xmejstj00 (kmejstr)
