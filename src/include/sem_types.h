@@ -21,6 +21,7 @@
  */
 typedef enum SemResult {
 	SEM_OK = 0,
+	SEM_ERR_SYNTAX = 2,    //!< Construct the parser accepts but IFJ26 does not allow (call of a non-name).
 	SEM_ERR_UNDEFINED = 3, //!< Undefined function or variable; missing @main function.
 	SEM_ERR_REDEFINED = 4, //!< Redefinition of a function or variable; more than one @main.
 	SEM_ERR_ARGUMENTS = 5, //!< Wrong number or type of call arguments; parameters of @main.
