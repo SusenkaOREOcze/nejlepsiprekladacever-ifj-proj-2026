@@ -26,6 +26,10 @@ static const sem_builtin_t BUILTINS[] = {
     {"subStr", 3, {SYMT_TYPE_STRING, SYMT_TYPE_INTEGER, SYMT_TYPE_INTEGER}, SYMT_TYPE_STRING},
     {"ord", 2, {SYMT_TYPE_STRING, SYMT_TYPE_INTEGER}, SYMT_TYPE_INTEGER},
     {"chr", 1, {SYMT_TYPE_INTEGER}, SYMT_TYPE_STRING},
+    {".toString", 1, {SEM_TYPE_ANY}, SYMT_TYPE_STRING},
+    {".toInt", 1, {SYMT_TYPE_DOUBLE}, SYMT_TYPE_INTEGER},
+    {".floor", 1, {SYMT_TYPE_DOUBLE}, SYMT_TYPE_DOUBLE},
+    {".length", 1, {SYMT_TYPE_STRING}, SYMT_TYPE_INTEGER},
 };
 
 static const size_t BUILTIN_COUNT = sizeof(BUILTINS) / sizeof(BUILTINS[0]);

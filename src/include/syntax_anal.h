@@ -155,4 +155,4 @@ bool syntax_parse_expression(syntax_parser_t *parser);
  */
 bool syntax_parse_program(syntax_parser_t *parser);
 
-#endif /* IFJ_SYNTAX_ANAL_H */
+#endif
