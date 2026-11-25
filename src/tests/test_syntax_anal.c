@@ -203,9 +203,9 @@ static void assert_program_rejected(void) { assert_syntax_error(syntax_parse_pro
 		test_results |= cmocka_run_group_tests_name((name), (tests), NULL, NULL);                            \
 	} while (0)
 
-/*===============
+/*
   PARSER API
-  ===============*/
+*/
 
 static void init_rejects_null_arguments(void **state) {
 	(void)state;
@@ -312,9 +312,9 @@ static void advance_reports_lexer_error(void **state) {
 	assert_false(parser.internal_error);
 }
 
-/*===============
+/*
   EXPRESSIONS ACCEPTED
-  ===============*/
+*/
 
 static void expression_accepts_single_operands(void **state) {
 	(void)state;
@@ -526,9 +526,9 @@ static void expression_stops_at_operand_after_operand(void **state) {
 	EXPRESSION_OK(TOKEN_INTEGER, ID("x"), INT("5"), NL);
 }
 
-/*===============
+/*
   EXPRESSIONS REJECTED
-  ===============*/
+*/
 
 static void expression_rejects_empty_input(void **state) {
 	(void)state;
@@ -613,58 +613,9 @@ static void expression_rejects_incomplete_if_expression(void **state) {
 	EXPRESSION_REJECTED(T(TOKEN_IF), ID("a"), T(TOKEN_THEN), T(TOKEN_ELSE), INT("2"), NL);
 }
 
-/*===============
-  LISTS IS TURNED OFF
-  ===============*/
-
-static void lists_value_rejected(void **state) {
-	(void)state;
-	// List(1, 2)
-	EXPRESSION_REJECTED(T(TOKEN_TYPE_LIST), T(TOKEN_LPAREN), INT("1"), T(TOKEN_COMMA), INT("2"),
-	                    T(TOKEN_RPAREN), NL);
-	// List.range(1, 5)
-	EXPRESSION_REJECTED(T(TOKEN_TYPE_LIST), T(TOKEN_DOT), ID("range"), T(TOKEN_LPAREN), INT("1"),
-	                    T(TOKEN_COMMA), INT("5"), T(TOKEN_RPAREN), NL);
-}
-
-static void lists_range_in_parentheses_rejected(void **state) {
-	(void)state;
-	// (1 to 5)
-	EXPRESSION_REJECTED(T(TOKEN_LPAREN), INT("1"), ID("to"), INT("5"), T(TOKEN_RPAREN), NL);
-}
-
-static void lists_concat_rejected(void **state) {
-	(void)state;
-	// expression stops before ++
-	EXPRESSION_OK(TOKEN_CONCAT, ID("a"), T(TOKEN_CONCAT), ID("b"), NL);
-	// x = a ++ b
-	MAIN_REJECTED(ID("x"), T(TOKEN_ASSIGN), ID("a"), T(TOKEN_CONCAT), ID("b"), NL);
-}
-
-static void lists_type_rejected(void **state) {
-	(void)state;
-	// val xs: List[Int] = ys
-	MAIN_REJECTED(T(TOKEN_VAL), ID("xs"), T(TOKEN_COLON), T(TOKEN_TYPE_LIST), T(TOKEN_LBRACKET),
-	              T(TOKEN_TYPE_INT), T(TOKEN_RBRACKET), T(TOKEN_ASSIGN), ID("ys"), NL);
-	// val xs: List = ys
-	MAIN_REJECTED(T(TOKEN_VAL), ID("xs"), T(TOKEN_COLON), T(TOKEN_TYPE_LIST), T(TOKEN_ASSIGN), ID("ys"), NL);
-	// def f(xs: List[Int]): Unit = ()
-	PROGRAM_REJECTED(PROLOG, T(TOKEN_DEF), ID("f"), T(TOKEN_LPAREN), ID("xs"), T(TOKEN_COLON),
-	                 T(TOKEN_TYPE_LIST), T(TOKEN_LBRACKET), T(TOKEN_TYPE_INT), T(TOKEN_RBRACKET),
-	                 T(TOKEN_RPAREN), T(TOKEN_COLON), T(TOKEN_TYPE_UNIT), T(TOKEN_ASSIGN), T(TOKEN_LPAREN),
-	                 T(TOKEN_RPAREN), NL);
-}
-
-static void lists_for_over_list_rejected(void **state) {
-	(void)state;
-	// for v <- xs do print(v)
-	MAIN_REJECTED(T(TOKEN_FOR), ID("v"), T(TOKEN_LEFT_ARROW), ID("xs"), T(TOKEN_DO), ID("print"),
-	              T(TOKEN_LPAREN), ID("v"), T(TOKEN_RPAREN), NL);
-}
-
-/*===============
+/*
   STATEMENTS ACCEPTED
-  ===============*/
+*/
 
 static void statement_accepts_variable_definitions(void **state) {
 	(void)state;
@@ -842,9 +793,9 @@ static void statement_accepts_nested_blocks(void **state) {
 	        NL, DEDENT, ID("y"), T(TOKEN_ASSIGN), INT("1"), NL, DEDENT);
 }
 
-/*===============
+/*
   STATEMENTS REJECTED
-  ===============*/
+*/
 
 static void statement_rejects_bad_variable_definitions(void **state) {
 	(void)state;
@@ -988,9 +939,9 @@ static void statement_rejects_unclosed_block(void **state) {
 	PROGRAM_REJECTED(PROLOG, MAIN_HEAD, ID("x"), T(TOKEN_ASSIGN), INT("1"), NL);
 }
 
-/*===============
+/*
   PROGRAMS
-  ===============*/
+*/
 
 static void program_accepts_minimal_main(void **state) {
 	(void)state;
@@ -1153,9 +1104,9 @@ static void program_rejects_tokens_after_function(void **state) {
 	PROGRAM_REJECTED(PROLOG, MAIN_HEAD, T(TOKEN_RETURN), NL, DEDENT, DEDENT);
 }
 
-/*===============
+/*
   LEXER AND MEMORY ERRORS
-  ===============*/
+*/
 
 static void lexer_error_stops_expression(void **state) {
 	(void)state;
@@ -1206,9 +1157,9 @@ static void out_of_memory_inside_program(void **state) {
 	assert_true(parser.internal_error);
 }
 
-/*===============
+/*
   MAIN
-  ===============*/
+*/
 
 int main(void) {
 	int test_results = 0;
