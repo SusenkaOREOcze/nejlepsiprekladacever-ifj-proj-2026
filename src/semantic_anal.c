@@ -19,7 +19,7 @@
     called before its body was checked, the body is checked on demand in the middle of the caller.
  */
 
-#include "include/semantic.h"
+#include "include/semantic_anal.h"
 
 #include "include/hashtable.h"
 #include "include/symtable.h"
@@ -146,7 +146,7 @@ static void sem_leave_scope(sem_context_t *ctx){
 
  static sem_result_t sem_declare_variable(sem_context_t *ctx, const char*name, symt_data_type_t type, bool is_mutable, uint64_t *out_uid){
     if(symt_exists_in_current_scope(ctx->scope, name)){
-        fprintf(stderr, "redefiniton of %s in the same block\n", name);
+        fprintf(stderr, "redefinition of %s in the same block\n", name);
         return SEM_ERR_REDEFINED;
     }
 
@@ -253,7 +253,7 @@ static sem_result_t sem_analyze_call(sem_context_t *ctx, ast_node_t *node, symt_
         result = sem_check_call(ctx->functable, name, (int)arg_count, arg_types, &ret_type);
 
         if(result == SEM_ERR_ARGUMENTS)
-            fprintf(stderr, "Wrong number or types of arguments in call of %s \n", name);
+            fprintf(stderr, "wrong number or types of arguments in call of %s \n", name);
         else if(result != SEM_OK)
             fprintf(stderr,"cannot check the call of %s \n", name);
         else *out_type = node->data_type = ret_type;
@@ -437,10 +437,16 @@ static sem_result_t sem_analyze_identifier(sem_context_t *ctx, ast_node_t *node,
         case AST_NODE_IF:{
             sem_flow_t flow;
             SEM_TRY(sem_analyze_if(ctx, node, true, &flow));
+            if(ast_node_child_count(node) < 3){
+                fprintf(stderr, "if used as an expression must have an else branch.\n");
+                return SEM_ERR_TYPE;
+            }
+
             if(flow.diverges){
                 fprintf(stderr, "if expression does not produce a value\n");
                 return SEM_ERR_TYPE;
             }
+
             *out_type = flow.type;
             return SEM_OK;
         }
@@ -508,7 +514,7 @@ static sem_result_t sem_analyze_assignment(sem_context_t *ctx, ast_node_t *node)
         return SEM_ERR_UNDEFINED;
     }
     if(!symbol.mutable){
-        fprintf(stderr, "assignment immutable %s.\n", name);
+        fprintf(stderr, "cannot assign to immutable variable %s.\n", name);
         return SEM_ERR_IMMUTABLE;
     }
 
@@ -533,7 +539,7 @@ static sem_result_t sem_analyze_return(sem_context_t *ctx, ast_node_t *node){
     ast_node_t *value = node->first_child;
 
     if(ret_type == SYMT_TYPE_UNDEFINED){
-        fprintf(stderr,"function %s uses return, so it needs an return type.\n", ctx->current->name);
+        fprintf(stderr,"function %s uses return, so it needs return type.\n", ctx->current->name);
         return SEM_ERR_TYPE;
     }
 
@@ -802,7 +808,7 @@ static sem_result_t sem_analyze_function_body(sem_context_t *ctx, sem_function_t
 
     if(node->kind == AST_NODE_MAIN_FUNCTION){
         if(++(*main_count) > 1){
-            fprintf(stderr,"more then one @main function.\n");
+            fprintf(stderr,"more than one @main function.\n");
             return SEM_ERR_REDEFINED;
         }
         if(param_count > 0){
@@ -871,7 +877,7 @@ static sem_result_t sem_check_recursion(sem_context_t *ctx){
         if(function->declared_ret == SYMT_TYPE_UNDEFINED && sem_is_recursive(ctx, i, visited, stack)){
             free(visited);
             free(stack);
-            fprintf(stderr, "recursive function %s, needs an explicit return type.\n", function->name);
+            fprintf(stderr, "recursive function '%s', needs an explicit return type.\n", function->name);
             return SEM_ERR_TYPE;
         }
     }

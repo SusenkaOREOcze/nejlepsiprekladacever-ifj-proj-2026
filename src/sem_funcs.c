@@ -1,4 +1,3 @@
-
 /**
  	@file sem_funcs.c
 	@author xmejstj00 (kmejstr)
@@ -52,8 +51,7 @@ static bool sem_arg_matches(symt_data_type_t param, symt_data_type_t arg) {
 	return sem_assignable(param, arg);
 }
 
-sem_result_t sem_check_args(int param_count, const symt_data_type_t *params, int arg_count,
-                            const symt_data_type_t *arg_types) {
+sem_result_t sem_check_args(int param_count, const symt_data_type_t *params, int arg_count, const symt_data_type_t *arg_types) {
 	if (arg_count != param_count)
 		return SEM_ERR_ARGUMENTS;
 
@@ -64,8 +62,7 @@ sem_result_t sem_check_args(int param_count, const symt_data_type_t *params, int
 	return SEM_OK;
 }
 
-sem_result_t sem_check_call(const funct_t *functions, const char *name, int arg_count,
-                            const symt_data_type_t *arg_types, symt_data_type_t *out_ret_type) {
+sem_result_t sem_check_call(const funct_t *functions, const char *name, int arg_count, const symt_data_type_t *arg_types, symt_data_type_t *out_ret_type) {
 	if (name == NULL || out_ret_type == NULL || arg_count < 0 || (arg_count > 0 && arg_types == NULL))
 		return SEM_ERR_INTERNAL;
 
@@ -108,8 +105,7 @@ symt_data_type_t sem_param_type(const funct_t *functions, const char *name, int 
 
 	funct_symbol_t symbol;
 	symt_data_type_t param_type;
-	if (funct_find_symbol(functions, name, &symbol) != SYMTSTAT_OK ||
-	    funct_nth_param_type(functions, &symbol, index, &param_type) != SYMTSTAT_OK)
+	if (funct_find_symbol(functions, name, &symbol) != SYMTSTAT_OK || funct_nth_param_type(functions, &symbol, index, &param_type) != SYMTSTAT_OK)
 		return SEM_TYPE_ANY;
 
 	return param_type;

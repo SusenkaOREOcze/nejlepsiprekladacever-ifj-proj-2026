@@ -1,4 +1,3 @@
-
 /**
 	@file sem_types.c
 	@author xmejstj00 (kmejstr)
@@ -42,7 +41,7 @@ symt_data_type_t sem_binary_type(ast_node_kind_t op, symt_data_type_t left, symt
 
 	switch (op) {
 	case AST_NODE_ADD:
-		if (both_string) /* String concatenation */
+		if (both_string) /* String concatenation, hate this word */
 			return SYMT_TYPE_STRING;
 		[[fallthrough]];
 	case AST_NODE_SUBTRACT:
