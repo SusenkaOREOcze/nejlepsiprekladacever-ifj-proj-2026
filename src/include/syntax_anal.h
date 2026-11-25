@@ -1,18 +1,6 @@
 #ifndef IFJ_SYNTAX_ANAL_H
 #define IFJ_SYNTAX_ANAL_H
 
-/**
- * @file syntax_anal.h
- * @author xkohela00
- * @date 2026-11-25
- * @brief syntax analyser interface for IFJ26
- *
- * definitions and statements go through recursive descent,
- * expressions go through the precedence table parser
- * semantic analyser isnt hooked up yet, comments in syntax_anal.c say
- * where syntax_semantic_action would get called
- */
-
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -60,22 +48,6 @@ typedef enum SyntaxSemanticAction {
 
 /**
  * @brief placeholder for the semantic analyser dispatcher
- *
- * parser doesnt call it yet, look for the semantic analyser comments in syntax_anal.c
- *
- * gets called synchronously, token is borrowed so copy it if you need it later
- * operator and call tokens only have type and location
- *
- * expression actions come in postfix order, so f of 1 plus x dot length gives
- * PRIMARY f, PRIMARY 1, CALL with 1 arg, PRIMARY x, MEMBER length, BINARY plus
- *
- * extension stuff
- * List used as a value for LISTS comes as PRIMARY with a TOKEN_TYPE_LIST token
- * ranges with to until and by for CONTROL and LISTS come as BINARY,
- * token type is TOKEN_IDENTIFIER and the lexeme is to, until or by
- * List type comes as TYPE List and right after it the TYPE actions of the element type
- * nested if expression inside an expression for CONTROL gives the condition,
- * then value and else value and after that SEMANTIC_ACTION_IF
  *
  * @param action what was recognized
  * @param token token of it, NULL if there isnt one

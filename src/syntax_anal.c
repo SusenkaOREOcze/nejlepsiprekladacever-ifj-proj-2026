@@ -461,6 +461,7 @@ static bool prec_parse_if_operand(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: if expression done, condition then value and else value
+	// syntax_semantic_action(SEMANTIC_ACTION_IF, NULL, 0);
 	return true;
 }
 
@@ -498,6 +499,7 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 		{
 			/* semantic analyser: report the operand here, identifier or literal,
 			   lexer frees the token text on next advance */
+			// syntax_semantic_action(SEMANTIC_ACTION_PRIMARY, token, 0);
 			if (!syntax_parser_advance(parser)) {
 				return false;
 			}
@@ -505,6 +507,7 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 		}
 	case PREC_UNIT: {
 		// semantic analyser: report unit literal here
+		// syntax_semantic_action(SEMANTIC_ACTION_UNIT, token, 0);
 		// unit literal is one operand but two tokens
 		if (!syntax_parser_expect(parser, TOKEN_LPAREN) || !syntax_parser_expect(parser, TOKEN_RPAREN)) {
 			return false;
@@ -520,6 +523,7 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 			return prec_fail(parser);
 		}
 		// semantic analyser: report member name here while the token is still valid
+		// syntax_semantic_action(SEMANTIC_ACTION_MEMBER, member, 0);
 		if (!syntax_parser_advance(parser)) {
 			return false;
 		}
@@ -531,6 +535,7 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 			return false;
 		}
 		// semantic analyser: report the call with argument_count args here
+		// syntax_semantic_action(SEMANTIC_ACTION_CALL, NULL, argument_count);
 		// callee would go before the call, each argument while its parsed
 		break;
 	}
@@ -628,6 +633,7 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 			valid = true;
 		} else if (prec_item_is(&handle[0], PREC_PREFIX) && handle[1].kind == PREC_ITEM_EXPRESSION) {
 			// semantic analyser: report the unary operator here, its the operator_token of the first item
+			// syntax_semantic_action(SEMANTIC_ACTION_UNARY, &handle[0].operator_token, 0);
 			valid = true;
 		}
 	} else if (length == 3) {
@@ -637,6 +643,7 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 		} else if (handle[0].kind == PREC_ITEM_EXPRESSION && handle[1].kind == PREC_ITEM_TERMINAL &&
 		           prec_is_binary(handle[1].terminal) && handle[2].kind == PREC_ITEM_EXPRESSION) {
 			// semantic analyser: report the binary operator here, its the operator_token of the middle item
+			// syntax_semantic_action(SEMANTIC_ACTION_BINARY, &handle[1].operator_token, 0);
 			valid = true;
 		}
 	}
@@ -789,10 +796,12 @@ static bool parse_type(syntax_parser_t *parser) {
 	case TOKEN_TYPE_STRING:
 	case TOKEN_TYPE_UNIT:
 		// semantic analyser: report the type here
+		// syntax_semantic_action(SEMANTIC_ACTION_TYPE, token, 0);
 		return syntax_parser_advance(parser);
 	/* LISTS
 	case TOKEN_TYPE_LIST:
 		// semantic analyser: report List here, element type comes next
+		// syntax_semantic_action(SEMANTIC_ACTION_TYPE, token, 0);
 		return syntax_parser_advance(parser) && syntax_parser_expect(parser, TOKEN_LBRACKET) &&
 		       parse_type(parser) && syntax_parser_expect(parser, TOKEN_RBRACKET);
 	*/
@@ -820,6 +829,7 @@ static bool parse_param_list(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: report parameter name here
+	// syntax_semantic_action(SEMANTIC_ACTION_PARAMETER, token, 0);
 	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
 		return false;
 	}
@@ -851,6 +861,7 @@ static bool parse_params_tail(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: report parameter name here
+	// syntax_semantic_action(SEMANTIC_ACTION_PARAMETER, token, 0);
 	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
 		return false;
 	}
@@ -918,6 +929,7 @@ static bool parse_body(syntax_parser_t *parser) {
 /** Parse a non-empty INDENT...DEDENT statement block. */
 static bool parse_block(syntax_parser_t *parser) {
 	// semantic analyser: new block and scope starts here
+	// syntax_semantic_action(SEMANTIC_ACTION_BLOCK_BEGIN, NULL, 0);
 	if (!syntax_parser_expect(parser, TOKEN_INDENT)) {
 		return false;
 	}
@@ -934,6 +946,7 @@ static bool parse_block(syntax_parser_t *parser) {
 				return false;
 			}
 			// semantic analyser: block and scope ends here
+			// syntax_semantic_action(SEMANTIC_ACTION_BLOCK, NULL, 0);
 			if (!syntax_parser_advance(parser)) {
 				return false;
 			}
@@ -975,6 +988,7 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 			return false;
 		}
 		// semantic analyser: return done
+		// syntax_semantic_action(SEMANTIC_ACTION_RETURN, NULL, 0);
 		return true;
 	}
 
@@ -982,6 +996,7 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 	if (token->type == TOKEN_IDENTIFIER) {
 		// semantic analyser: the name is the assignment target or the first operand, known after the next
 		// token
+		// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0);
 		if (!syntax_parser_advance(parser)) {
 			return false;
 		}
@@ -994,6 +1009,7 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 				return false;
 			}
 			// semantic analyser: assignment done
+			// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
 			return true;
 		}
 		return prec_parse_tail(parser);
@@ -1070,6 +1086,7 @@ static bool parse_if(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: if statement done
+	// syntax_semantic_action(SEMANTIC_ACTION_IF, NULL, 0);
 	return true;
 }
 
@@ -1212,6 +1229,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 	case TOKEN_VAL:
 	case TOKEN_VAR: {
 		// semantic analyser: val or var definition starts here
+		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION_BEGIN, token, 0);
 		if (!syntax_parser_advance(parser)) {
 			parser->failed = true;
 			return false;
@@ -1222,11 +1240,13 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		// semantic analyser: report variable name here
+		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION_NAME, name, 0);
 		if (!syntax_parser_advance(parser) || !parse_type_opt(parser) ||
 		    !syntax_parser_expect(parser, TOKEN_ASSIGN) || !parse_value(parser)) {
 			return false;
 		}
 		// semantic analyser: variable definition done
+		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION, NULL, 0);
 		return true;
 	}
 	case TOKEN_RETURN: {
@@ -1248,6 +1268,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		// semantic analyser: return done
+		// syntax_semantic_action(SEMANTIC_ACTION_RETURN, NULL, 0);
 		return true;
 	}
 	case TOKEN_WHILE:
@@ -1256,6 +1277,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		// semantic analyser: while loop done
+		// syntax_semantic_action(SEMANTIC_ACTION_WHILE, NULL, 0);
 		return true;
 	case TOKEN_FOR:
 		if (!syntax_parser_advance(parser) || !parse_for_head(parser) ||
@@ -1263,6 +1285,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		// semantic analyser: for loop done
+		// syntax_semantic_action(SEMANTIC_ACTION_FOR, NULL, 0);
 		return true;
 	case TOKEN_IF:
 		return parse_if(parser);
@@ -1271,6 +1294,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 		// then assign means assignment, anything else is the rest of an expression statement (expr_tail)
 		// semantic analyser: the name is the assignment target or the first operand, known after the next
 		// token
+		// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0);
 		if (!syntax_parser_advance(parser)) {
 			return false;
 		}
@@ -1283,6 +1307,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 				return false;
 			}
 			// semantic analyser: assignment done
+			// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
 			return true;
 		}
 		return prec_parse_tail(parser) && parse_stmt_end(parser);
@@ -1316,6 +1341,7 @@ static bool parse_definition(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: function definition starts here
+	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION_BEGIN, def_token, 0);
 	if (!syntax_parser_advance(parser)) {
 		return false;
 	}
@@ -1325,6 +1351,7 @@ static bool parse_definition(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: report function name here
+	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION_NAME, function_name, 0);
 	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_LPAREN) ||
 	    !parse_param_list(parser) || !syntax_parser_expect(parser, TOKEN_RPAREN)) {
 		return false;
@@ -1336,6 +1363,7 @@ static bool parse_definition(syntax_parser_t *parser) {
 		return false;
 	}
 	// semantic analyser: function definition done
+	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION, NULL, 0);
 	return true;
 }
 
@@ -1376,6 +1404,7 @@ bool syntax_parse_program(syntax_parser_t *parser) {
 				return false;
 			}
 			// semantic analyser: program done
+			// syntax_semantic_action(SEMANTIC_ACTION_PROGRAM, NULL, 0);
 			return true;
 		}
 		if (token->type != TOKEN_DEF && token->type != TOKEN_MAIN_ANNOTATION) {
