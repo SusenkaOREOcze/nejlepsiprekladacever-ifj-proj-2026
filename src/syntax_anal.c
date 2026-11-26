@@ -1,5 +1,6 @@
 #include "include/syntax_anal.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -59,6 +60,32 @@ bool syntax_parser_accept(syntax_parser_t *parser, token_type_t expected, bool *
 	}
 	*accepted = token->type == expected;
 	return !*accepted || syntax_parser_advance(parser);
+}
+
+/**
+ * @brief sends one event to the semantic analyser
+ *
+ * an error from the semantic analyser stops parsing like a syntax error would,
+ * its exit code is kept in semantic_result
+ *
+ * @param parser parser that stops on error
+ * @param action what was recognized
+ * @param token token of it or NULL
+ * @param item_count see syntax_semantic_action_t
+ * @return true when the semantic analyser accepted the event
+ */
+static bool syntax_report(syntax_parser_t *parser, syntax_semantic_action_t action, const token_t *token,
+                          size_t item_count) {
+	if (parser == NULL || parser->failed) {
+		return false;
+	}
+	const sem_result_t code = syntax_semantic_action(action, token, item_count);
+	if (code != SEM_OK) {
+		parser->failed = true;
+		parser->semantic_result = code;
+		return false;
+	}
+	return true;
 }
 
 //
@@ -194,6 +221,7 @@ static bool prec_fail(syntax_parser_t *parser) {
  * @return always false so it can be returned right away
  */
 static bool prec_out_of_memory(syntax_parser_t *parser) {
+	fprintf(stderr, "internal error: out of memory.\n");
 	parser->failed = true;
 	parser->internal_error = true;
 	return false;
@@ -460,16 +488,15 @@ static bool prec_parse_if_operand(syntax_parser_t *parser) {
 	    !syntax_parser_expect(parser, TOKEN_ELSE) || !prec_parse(parser)) {
 		return false;
 	}
-	// semantic analyser: if expression done, condition then value and else value
-	// syntax_semantic_action(SEMANTIC_ACTION_IF, NULL, 0);
-	return true;
+	// condition, then value and else value are done
+	return syntax_report(parser, SEMANTIC_ACTION_IF, NULL, 3);
 }
 
 /**
  * @brief consumes the input symbol and pushes it as a terminal
  *
- * operands members and calls would go to the semantic analyser here since their tokens
- * die on the next advance, operators would go later when they get reduced
+ * operands members and calls go to the semantic analyser here since their tokens
+ * die on the next advance, operators go later when they get reduced
  *
  * @param parser parser to use
  * @param stack stack to push onto
@@ -497,19 +524,16 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 		/* LISTS
 		   case PREC_LIST: */
 		{
-			/* semantic analyser: report the operand here, identifier or literal,
-			   lexer frees the token text on next advance */
-			// syntax_semantic_action(SEMANTIC_ACTION_PRIMARY, token, 0);
-			if (!syntax_parser_advance(parser)) {
+			// identifier or literal, reported now because the lexer frees the token text on next advance
+			if (!syntax_report(parser, SEMANTIC_ACTION_PRIMARY, token, 0) || !syntax_parser_advance(parser)) {
 				return false;
 			}
 			break;
 		}
 	case PREC_UNIT: {
-		// semantic analyser: report unit literal here
-		// syntax_semantic_action(SEMANTIC_ACTION_UNIT, token, 0);
 		// unit literal is one operand but two tokens
-		if (!syntax_parser_expect(parser, TOKEN_LPAREN) || !syntax_parser_expect(parser, TOKEN_RPAREN)) {
+		if (!syntax_report(parser, SEMANTIC_ACTION_UNIT, token, 0) ||
+		    !syntax_parser_expect(parser, TOKEN_LPAREN) || !syntax_parser_expect(parser, TOKEN_RPAREN)) {
 			return false;
 		}
 		break;
@@ -522,9 +546,8 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 		if (member == NULL || member->type != TOKEN_IDENTIFIER) {
 			return prec_fail(parser);
 		}
-		// semantic analyser: report member name here while the token is still valid
-		// syntax_semantic_action(SEMANTIC_ACTION_MEMBER, member, 0);
-		if (!syntax_parser_advance(parser)) {
+		// member name is reported while the token is still valid
+		if (!syntax_report(parser, SEMANTIC_ACTION_MEMBER, member, 0) || !syntax_parser_advance(parser)) {
 			return false;
 		}
 		break;
@@ -534,9 +557,10 @@ static bool prec_shift(syntax_parser_t *parser, prec_stack_t *stack, prec_input_
 		if (!prec_parse_call_arguments(parser, &argument_count)) {
 			return false;
 		}
-		// semantic analyser: report the call with argument_count args here
-		// syntax_semantic_action(SEMANTIC_ACTION_CALL, NULL, argument_count);
-		// callee would go before the call, each argument while its parsed
+		// callee was reported before the call and each argument while it was parsed
+		if (!syntax_report(parser, SEMANTIC_ACTION_CALL, NULL, argument_count)) {
+			return false;
+		}
 		break;
 	}
 	case PREC_LPAREN:
@@ -622,7 +646,7 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 	const prec_item_t *handle = &stack->items[start];
 	bool valid = false;
 
-	// operands are done when shifted, only unary and binary operators would be reported here
+	// operands are reported when shifted, only unary and binary operators are reported here
 	if (length == 1) {
 		/* LISTS
 		   prec_item_is(&handle[0], PREC_LIST) || */
@@ -632,8 +656,10 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 		    (prec_item_is(&handle[1], PREC_DOT) || prec_item_is(&handle[1], PREC_CALL))) {
 			valid = true;
 		} else if (prec_item_is(&handle[0], PREC_PREFIX) && handle[1].kind == PREC_ITEM_EXPRESSION) {
-			// semantic analyser: report the unary operator here, its the operator_token of the first item
-			// syntax_semantic_action(SEMANTIC_ACTION_UNARY, &handle[0].operator_token, 0);
+			// unary operator is the operator_token of the first item
+			if (!syntax_report(parser, SEMANTIC_ACTION_UNARY, &handle[0].operator_token, 0)) {
+				return false;
+			}
 			valid = true;
 		}
 	} else if (length == 3) {
@@ -642,8 +668,10 @@ static bool prec_reduce(syntax_parser_t *parser, prec_stack_t *stack) {
 			valid = true;
 		} else if (handle[0].kind == PREC_ITEM_EXPRESSION && handle[1].kind == PREC_ITEM_TERMINAL &&
 		           prec_is_binary(handle[1].terminal) && handle[2].kind == PREC_ITEM_EXPRESSION) {
-			// semantic analyser: report the binary operator here, its the operator_token of the middle item
-			// syntax_semantic_action(SEMANTIC_ACTION_BINARY, &handle[1].operator_token, 0);
+			// binary operator is the operator_token of the middle item
+			if (!syntax_report(parser, SEMANTIC_ACTION_BINARY, &handle[1].operator_token, 0)) {
+				return false;
+			}
 			valid = true;
 		}
 	}
@@ -795,9 +823,7 @@ static bool parse_type(syntax_parser_t *parser) {
 	case TOKEN_TYPE_DOUBLE:
 	case TOKEN_TYPE_STRING:
 	case TOKEN_TYPE_UNIT:
-		// semantic analyser: report the type here
-		// syntax_semantic_action(SEMANTIC_ACTION_TYPE, token, 0);
-		return syntax_parser_advance(parser);
+		return syntax_report(parser, SEMANTIC_ACTION_TYPE, token, 0) && syntax_parser_advance(parser);
 	/* LISTS
 	case TOKEN_TYPE_LIST:
 		// semantic analyser: report List here, element type comes next
@@ -828,9 +854,8 @@ static bool parse_param_list(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	// semantic analyser: report parameter name here
-	// syntax_semantic_action(SEMANTIC_ACTION_PARAMETER, token, 0);
-	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
+	if (!syntax_report(parser, SEMANTIC_ACTION_PARAMETER, token, 0) || !syntax_parser_advance(parser) ||
+	    !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
 		return false;
 	}
 	return parse_params_tail(parser);
@@ -860,9 +885,8 @@ static bool parse_params_tail(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	// semantic analyser: report parameter name here
-	// syntax_semantic_action(SEMANTIC_ACTION_PARAMETER, token, 0);
-	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
+	if (!syntax_report(parser, SEMANTIC_ACTION_PARAMETER, token, 0) || !syntax_parser_advance(parser) ||
+	    !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
 		return false;
 	}
 	return parse_params_tail(parser);
@@ -928,9 +952,9 @@ static bool parse_body(syntax_parser_t *parser) {
 
 /** Parse a non-empty INDENT...DEDENT statement block. */
 static bool parse_block(syntax_parser_t *parser) {
-	// semantic analyser: new block and scope starts here
-	// syntax_semantic_action(SEMANTIC_ACTION_BLOCK_BEGIN, NULL, 0);
-	if (!syntax_parser_expect(parser, TOKEN_INDENT)) {
+	// new block and scope starts here
+	if (!syntax_report(parser, SEMANTIC_ACTION_BLOCK_BEGIN, NULL, 0) ||
+	    !syntax_parser_expect(parser, TOKEN_INDENT)) {
 		return false;
 	}
 	bool has_statement = false;
@@ -945,9 +969,8 @@ static bool parse_block(syntax_parser_t *parser) {
 				parser->failed = true;
 				return false;
 			}
-			// semantic analyser: block and scope ends here
-			// syntax_semantic_action(SEMANTIC_ACTION_BLOCK, NULL, 0);
-			if (!syntax_parser_advance(parser)) {
+			// block and scope ends here
+			if (!syntax_report(parser, SEMANTIC_ACTION_BLOCK, NULL, 0) || !syntax_parser_advance(parser)) {
 				return false;
 			}
 			return true;
@@ -983,21 +1006,23 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 			return false;
 		}
 		// return without a value ends at the terminator or at else
-		if (next->type != TOKEN_NEWLINE && next->type != TOKEN_SEMICOLON && next->type != TOKEN_ELSE &&
-		    next->type != TOKEN_DEDENT && next->type != TOKEN_EOF && !syntax_parse_expression(parser)) {
+		const bool has_value = next->type != TOKEN_NEWLINE && next->type != TOKEN_SEMICOLON &&
+		                       next->type != TOKEN_ELSE && next->type != TOKEN_DEDENT &&
+		                       next->type != TOKEN_EOF;
+		if (has_value && !syntax_parse_expression(parser)) {
 			return false;
 		}
-		// semantic analyser: return done
-		// syntax_semantic_action(SEMANTIC_ACTION_RETURN, NULL, 0);
-		return true;
+		return syntax_report(parser, SEMANTIC_ACTION_RETURN, NULL, has_value ? 1 : 0);
 	}
 
 	// ID <id_stmt> like in parse_statement, eat the name first and then decide
 	if (token->type == TOKEN_IDENTIFIER) {
-		// semantic analyser: the name is the assignment target or the first operand, known after the next
-		// token
-		// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0);
-		if (!syntax_parser_advance(parser)) {
+		/*
+		 * the name is the assignment target or the first operand, the semantic analyser
+		 * finds out from the events that follow
+		 */
+		if (!syntax_report(parser, SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0) ||
+		    !syntax_parser_advance(parser)) {
 			return false;
 		}
 		bool assign = false;
@@ -1005,12 +1030,8 @@ static bool parse_inline_body(syntax_parser_t *parser) {
 			return false;
 		}
 		if (assign) {
-			if (!syntax_parse_expression(parser)) {
-				return false;
-			}
-			// semantic analyser: assignment done
-			// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
-			return true;
+			return syntax_parse_expression(parser) &&
+			       syntax_report(parser, SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
 		}
 		return prec_parse_tail(parser);
 	}
@@ -1038,56 +1059,58 @@ static bool parse_else_body(syntax_parser_t *parser) {
 	return parse_inline_body(parser) && parse_stmt_end(parser);
 }
 
-/** Parse an optional inline ELSE branch or the inline statement terminator. */
-static bool parse_else_line(syntax_parser_t *parser) {
+/** Parse an optional inline ELSE branch or the inline statement terminator, has_else says which. */
+static bool parse_else_line(syntax_parser_t *parser, bool *has_else) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
 		return false;
 	}
 	if (token->type == TOKEN_ELSE) {
+		*has_else = true;
 		return syntax_parser_advance(parser) && parse_else_body(parser);
 	}
 
 	// one line then with else on the next line, skip the newline and go on with else
 	const token_t *next = syntax_parser_next(parser);
 	if (token->type == TOKEN_NEWLINE && next != NULL && next->type == TOKEN_ELSE) {
+		*has_else = true;
 		return syntax_parser_advance(parser) && syntax_parser_advance(parser) && parse_else_body(parser);
 	}
+	*has_else = false;
 	return parse_stmt_end(parser);
 }
 
-/** Parse the optional ELSE branch following a block-style THEN branch. */
-static bool parse_else_block(syntax_parser_t *parser) {
-	bool has_else = false;
-	if (!syntax_parser_accept(parser, TOKEN_ELSE, &has_else)) {
+/** Parse the optional ELSE branch following a block-style THEN branch, has_else says if there was one. */
+static bool parse_else_block(syntax_parser_t *parser, bool *has_else) {
+	if (!syntax_parser_accept(parser, TOKEN_ELSE, has_else)) {
 		return false;
 	}
-	return !has_else || parse_else_body(parser);
+	return !*has_else || parse_else_body(parser);
 }
 
-/** Parse either block-style or inline content following THEN. */
-static bool parse_then_tail(syntax_parser_t *parser) {
+/** Parse either block-style or inline content following THEN, has_else says if an ELSE branch was parsed. */
+static bool parse_then_tail(syntax_parser_t *parser, bool *has_else) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
 		return false;
 	}
 	if (token->type == TOKEN_NEWLINE) {
-		return syntax_parser_advance(parser) && parse_block(parser) && parse_else_block(parser);
+		return syntax_parser_advance(parser) && parse_block(parser) && parse_else_block(parser, has_else);
 	}
-	return parse_inline_body(parser) && parse_else_line(parser);
+	return parse_inline_body(parser) && parse_else_line(parser, has_else);
 }
 
 /** Parse an IF condition and its THEN/optional ELSE content. */
 static bool parse_if(syntax_parser_t *parser) {
+	bool has_else = false;
 	if (!syntax_parser_expect(parser, TOKEN_IF) || !syntax_parse_expression(parser) ||
-	    !syntax_parser_expect(parser, TOKEN_THEN) || !parse_then_tail(parser)) {
+	    !syntax_parser_expect(parser, TOKEN_THEN) || !parse_then_tail(parser, &has_else)) {
 		return false;
 	}
-	// semantic analyser: if statement done
-	// syntax_semantic_action(SEMANTIC_ACTION_IF, NULL, 0);
-	return true;
+	// condition, then branch and maybe else branch are done
+	return syntax_report(parser, SEMANTIC_ACTION_IF, NULL, has_else ? 3 : 2);
 }
 
 /** Parse a value: an expression with terminator, or an IF expression. */
@@ -1119,9 +1142,8 @@ static bool parse_generator(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	// semantic analyser: report the loop variable name here
-	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_LEFT_ARROW) ||
-	    !syntax_parse_expression(parser)) {
+	if (!syntax_report(parser, SEMANTIC_ACTION_FOR_VARIABLE, token, 0) || !syntax_parser_advance(parser) ||
+	    !syntax_parser_expect(parser, TOKEN_LEFT_ARROW) || !syntax_parse_expression(parser)) {
 		return false;
 	}
 
@@ -1136,22 +1158,21 @@ static bool parse_generator(syntax_parser_t *parser) {
 		return true;
 		*/
 	}
-	// semantic analyser: range start done, report whether its to or until here
-	if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser)) {
+	// range start is done, the token says if its to or until
+	if (!syntax_report(parser, SEMANTIC_ACTION_RANGE_BEGIN, token, 0) || !syntax_parser_advance(parser) ||
+	    !syntax_parse_expression(parser)) {
 		return false;
 	}
-	// semantic analyser: range end done
-	if (token_is_identifier(syntax_parser_current(parser), "by")) {
-		if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser)) {
-			return false;
-		}
-		// semantic analyser: step done
+	const bool has_step = token_is_identifier(syntax_parser_current(parser), "by");
+	if (has_step && (!syntax_parser_advance(parser) || !syntax_parse_expression(parser))) {
+		return false;
 	}
-	return true;
+	// range end and maybe the step are done
+	return syntax_report(parser, SEMANTIC_ACTION_RANGE, NULL, has_step ? 2 : 1);
 }
 
-/** Parse zero or more inline IF guards. */
-static bool parse_guards(syntax_parser_t *parser) {
+/** Parse zero or more inline IF guards, guard_count gets increased for each. */
+static bool parse_guards(syntax_parser_t *parser, size_t *guard_count) {
 	for (;;) {
 		bool is_if = false;
 		if (!syntax_parser_accept(parser, TOKEN_IF, &is_if)) {
@@ -1163,11 +1184,12 @@ static bool parse_guards(syntax_parser_t *parser) {
 		if (!syntax_parse_expression(parser)) {
 			return false;
 		}
+		++*guard_count;
 	}
 }
 
-/** Parse zero or more newline-terminated IF guards. */
-static bool parse_guard_lines(syntax_parser_t *parser) {
+/** Parse zero or more newline-terminated IF guards, guard_count gets increased for each. */
+static bool parse_guard_lines(syntax_parser_t *parser, size_t *guard_count) {
 	for (;;) {
 		bool is_if = false;
 		if (!syntax_parser_accept(parser, TOKEN_IF, &is_if)) {
@@ -1179,11 +1201,12 @@ static bool parse_guard_lines(syntax_parser_t *parser) {
 		if (!syntax_parse_expression(parser) || !syntax_parser_expect(parser, TOKEN_NEWLINE)) {
 			return false;
 		}
+		++*guard_count;
 	}
 }
 
-/** Parse either the inline or multiline form of a for-loop header. */
-static bool parse_for_head(syntax_parser_t *parser) {
+/** Parse either the inline or multiline form of a for-loop header, guard_count gets the number of guards. */
+static bool parse_for_head(syntax_parser_t *parser, size_t *guard_count) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
@@ -1195,9 +1218,9 @@ static bool parse_for_head(syntax_parser_t *parser) {
 	if (token->type == TOKEN_NEWLINE) {
 		return syntax_parser_advance(parser) && syntax_parser_expect(parser, TOKEN_INDENT) &&
 		       parse_generator(parser) && syntax_parser_expect(parser, TOKEN_NEWLINE) &&
-		       parse_guard_lines(parser) && syntax_parser_expect(parser, TOKEN_DEDENT);
+		       parse_guard_lines(parser, guard_count) && syntax_parser_expect(parser, TOKEN_DEDENT);
 	}
-	return parse_generator(parser) && parse_guards(parser);
+	return parse_generator(parser) && parse_guards(parser, guard_count);
 }
 
 /**
@@ -1228,8 +1251,10 @@ static bool parse_statement(syntax_parser_t *parser) {
 	switch (token->type) {
 	case TOKEN_VAL:
 	case TOKEN_VAR: {
-		// semantic analyser: val or var definition starts here
-		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION_BEGIN, token, 0);
+		// val or var definition starts here
+		if (!syntax_report(parser, SEMANTIC_ACTION_DECLARATION_BEGIN, token, 0)) {
+			return false;
+		}
 		if (!syntax_parser_advance(parser)) {
 			parser->failed = true;
 			return false;
@@ -1239,15 +1264,12 @@ static bool parse_statement(syntax_parser_t *parser) {
 			parser->failed = true;
 			return false;
 		}
-		// semantic analyser: report variable name here
-		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION_NAME, name, 0);
-		if (!syntax_parser_advance(parser) || !parse_type_opt(parser) ||
+		if (!syntax_report(parser, SEMANTIC_ACTION_DECLARATION_NAME, name, 0) ||
+		    !syntax_parser_advance(parser) || !parse_type_opt(parser) ||
 		    !syntax_parser_expect(parser, TOKEN_ASSIGN) || !parse_value(parser)) {
 			return false;
 		}
-		// semantic analyser: variable definition done
-		// syntax_semantic_action(SEMANTIC_ACTION_DECLARATION, NULL, 0);
-		return true;
+		return syntax_report(parser, SEMANTIC_ACTION_DECLARATION, NULL, 0);
 	}
 	case TOKEN_RETURN: {
 		if (!syntax_parser_advance(parser)) {
@@ -1259,43 +1281,38 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		// no value if the line or file ends right after return
-		if (next->type == TOKEN_NEWLINE || next->type == TOKEN_SEMICOLON || next->type == TOKEN_DEDENT ||
-		    next->type == TOKEN_EOF) {
-			if (!parse_stmt_end(parser)) {
-				return false;
-			}
-		} else if (!parse_value(parser)) {
+		const bool has_value = next->type != TOKEN_NEWLINE && next->type != TOKEN_SEMICOLON &&
+		                       next->type != TOKEN_DEDENT && next->type != TOKEN_EOF;
+		if (has_value ? !parse_value(parser) : !parse_stmt_end(parser)) {
 			return false;
 		}
-		// semantic analyser: return done
-		// syntax_semantic_action(SEMANTIC_ACTION_RETURN, NULL, 0);
-		return true;
+		return syntax_report(parser, SEMANTIC_ACTION_RETURN, NULL, has_value ? 1 : 0);
 	}
 	case TOKEN_WHILE:
 		if (!syntax_parser_advance(parser) || !syntax_parse_expression(parser) ||
 		    !syntax_parser_expect(parser, TOKEN_DO) || !parse_do_body(parser)) {
 			return false;
 		}
-		// semantic analyser: while loop done
-		// syntax_semantic_action(SEMANTIC_ACTION_WHILE, NULL, 0);
-		return true;
-	case TOKEN_FOR:
-		if (!syntax_parser_advance(parser) || !parse_for_head(parser) ||
+		return syntax_report(parser, SEMANTIC_ACTION_WHILE, NULL, 0);
+	case TOKEN_FOR: {
+		size_t guard_count = 0;
+		if (!syntax_parser_advance(parser) || !parse_for_head(parser, &guard_count) ||
 		    !syntax_parser_expect(parser, TOKEN_DO) || !parse_do_body(parser)) {
 			return false;
 		}
-		// semantic analyser: for loop done
-		// syntax_semantic_action(SEMANTIC_ACTION_FOR, NULL, 0);
-		return true;
+		return syntax_report(parser, SEMANTIC_ACTION_FOR, NULL, guard_count);
+	}
 	case TOKEN_IF:
 		return parse_if(parser);
 	case TOKEN_IDENTIFIER: {
 		// grammar rules 32 to 35, ID <id_stmt>, the name is eaten first
 		// then assign means assignment, anything else is the rest of an expression statement (expr_tail)
-		// semantic analyser: the name is the assignment target or the first operand, known after the next
-		// token
-		// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0);
-		if (!syntax_parser_advance(parser)) {
+		/*
+		 * the name is the assignment target or the first operand, the semantic analyser
+		 * finds out from the events that follow
+		 */
+		if (!syntax_report(parser, SEMANTIC_ACTION_ASSIGNMENT_TARGET, token, 0) ||
+		    !syntax_parser_advance(parser)) {
 			return false;
 		}
 		bool assign = false;
@@ -1303,12 +1320,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 			return false;
 		}
 		if (assign) {
-			if (!parse_value(parser)) {
-				return false;
-			}
-			// semantic analyser: assignment done
-			// syntax_semantic_action(SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
-			return true;
+			return parse_value(parser) && syntax_report(parser, SEMANTIC_ACTION_ASSIGNMENT, NULL, 0);
 		}
 		return prec_parse_tail(parser) && parse_stmt_end(parser);
 	}
@@ -1340,9 +1352,9 @@ static bool parse_definition(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	// semantic analyser: function definition starts here
-	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION_BEGIN, def_token, 0);
-	if (!syntax_parser_advance(parser)) {
+	// function definition starts here, item count says if it has @main
+	if (!syntax_report(parser, SEMANTIC_ACTION_FUNCTION_BEGIN, def_token, is_main ? 1 : 0) ||
+	    !syntax_parser_advance(parser)) {
 		return false;
 	}
 	const token_t *function_name = syntax_parser_current(parser);
@@ -1350,9 +1362,8 @@ static bool parse_definition(syntax_parser_t *parser) {
 		parser->failed = true;
 		return false;
 	}
-	// semantic analyser: report function name here
-	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION_NAME, function_name, 0);
-	if (!syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_LPAREN) ||
+	if (!syntax_report(parser, SEMANTIC_ACTION_FUNCTION_NAME, function_name, 0) ||
+	    !syntax_parser_advance(parser) || !syntax_parser_expect(parser, TOKEN_LPAREN) ||
 	    !parse_param_list(parser) || !syntax_parser_expect(parser, TOKEN_RPAREN)) {
 		return false;
 	}
@@ -1362,9 +1373,7 @@ static bool parse_definition(syntax_parser_t *parser) {
 	    !parse_body(parser)) {
 		return false;
 	}
-	// semantic analyser: function definition done
-	// syntax_semantic_action(SEMANTIC_ACTION_FUNCTION, NULL, 0);
-	return true;
+	return syntax_report(parser, SEMANTIC_ACTION_FUNCTION, NULL, 0);
 }
 
 /** Parse the required import ifj26.* prolog. */
@@ -1389,8 +1398,9 @@ static bool parse_prolog(syntax_parser_t *parser) {
 }
 
 /** Parse a complete program: prolog, definitions, then EOF. */
-bool syntax_parse_program(syntax_parser_t *parser) {
-	if (parser == NULL || parser->failed || !parse_prolog(parser)) {
+static bool parse_program(syntax_parser_t *parser) {
+	if (parser->failed || !syntax_report(parser, SEMANTIC_ACTION_PROGRAM_BEGIN, NULL, 0) ||
+	    !parse_prolog(parser)) {
 		return false;
 	}
 	for (;;) {
@@ -1400,12 +1410,8 @@ bool syntax_parse_program(syntax_parser_t *parser) {
 			return false;
 		}
 		if (token->type == TOKEN_EOF) {
-			if (!syntax_parser_advance(parser)) {
-				return false;
-			}
-			// semantic analyser: program done
-			// syntax_semantic_action(SEMANTIC_ACTION_PROGRAM, NULL, 0);
-			return true;
+			// whole program is parsed, the semantic analyser checks it now
+			return syntax_parser_advance(parser) && syntax_report(parser, SEMANTIC_ACTION_PROGRAM, NULL, 0);
 		}
 		if (token->type != TOKEN_DEF && token->type != TOKEN_MAIN_ANNOTATION) {
 			parser->failed = true;
@@ -1415,4 +1421,56 @@ bool syntax_parse_program(syntax_parser_t *parser) {
 			return false;
 		}
 	}
+}
+
+/**
+ * @brief prints a syntax error for the token where parsing stopped
+ *
+ * an internal error and a semantic error were printed where they happened,
+ * a lexer error is printed by main from lexer_error, so only a real syntax error is printed here
+ *
+ * @param parser parser that failed
+ */
+static void syntax_print_error(const syntax_parser_t *parser) {
+	if (parser->internal_error || parser->semantic_result != SEM_OK || lexer_error(parser->lexer) != NULL) {
+		return;
+	}
+	// syntax_parser_current gives NULL after a failure, the lexer still has the token
+	const token_t *token = lexer_current(parser->lexer);
+	if (token == NULL) {
+		fprintf(stderr, "syntax error.\n");
+		return;
+	}
+	switch (token->type) {
+	case TOKEN_EOF:
+		fprintf(stderr, "%zu: syntax error: unexpected end of file.\n", token->location.line);
+		break;
+	case TOKEN_NEWLINE:
+		fprintf(stderr, "%zu: syntax error: unexpected end of line.\n", token->location.line);
+		break;
+	case TOKEN_INDENT:
+		fprintf(stderr, "%zu: syntax error: unexpected indentation.\n", token->location.line);
+		break;
+	case TOKEN_DEDENT:
+		fprintf(stderr, "%zu: syntax error: unexpected end of block.\n", token->location.line);
+		break;
+	default:
+		if (token->lexeme != NULL) {
+			fprintf(stderr, "%zu: syntax error: unexpected '%s'.\n", token->location.line, token->lexeme);
+		} else {
+			fprintf(stderr, "%zu: syntax error: unexpected token.\n", token->location.line);
+		}
+		break;
+	}
+}
+
+bool syntax_parse_program(syntax_parser_t *parser) {
+	if (parser == NULL) {
+		return false;
+	}
+	if (!parse_program(parser)) {
+		syntax_print_error(parser);
+		return false;
+	}
+	return true;
 }
