@@ -1,3 +1,13 @@
+/*
+AI PROMPT:
+Do the same for file "src/tests/test_semantic_actions.c" and the semantic-action code in
+"src/semantic_actions.c". It builds the AST from parser events. These tests also run
+programs through the lexer, parser and semantic analyser. They check valid programs and
+extensions, semantic error results and AST details like decoded literals, operator
+order, calls and arguments, if/for structure, returns and members turned into calls.
+Go through this file and adjust the tests to check the semantic actions and AST details
+mentioned above. Make sure the expected tree shape and results line up.
+ */
 /**
  * @file test_semantic_actions.c
  * @author xkohela00

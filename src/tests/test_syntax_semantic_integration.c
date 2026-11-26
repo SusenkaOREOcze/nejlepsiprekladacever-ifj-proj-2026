@@ -1,3 +1,16 @@
+/*
+AI PROMPT:
+Look at file "src/tests/test_syntax_semantic_integration.c" and the lexer, parser,
+semantic actions and analyser it uses. The tests compile full programs and check the specified result.
+They should cover examples from IFJ26_examples.zip in this folder, program and function rules,
+variables and scopes, built-ins, expressions, and the FUNEXP, BOOLTHEN, CONTROL and VALMEM extensions. 
+They also check semantic errors like undefined or duplicate names, bad arguments and types, writes to
+immutable variables and invalid loop steps, along with AST handoff and error precedence.
+Please review the suite and update the checks where they don't reflect that behavior.
+Keep the expected results aligned with the compiler pipeline and semantic rules listed here. 
+Don't hallucinate functionality that has not been defined by this prompt, keep rechecking this prompt
+repeatedly after any action to make sure you are only defining tests for the existing implementation.
+ */
 /**
  * @file test_syntax_semantic_integration.c
  * @author xkohela00

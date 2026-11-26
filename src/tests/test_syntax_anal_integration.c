@@ -1,3 +1,14 @@
+/*
+AI PROMPT:
+see file "src/tests/test_syntax_anal_integration.c" and the lexer/parser it runs.
+These tests feed real IFJ26 source text through both, then check the compiler result.
+They should cover the import and @main rules, functions, whitespace/comments/line breaks,
+indentation and separators, literals, declarations, assignments and control statements,
+expression syntax and precedence, plus the FUNEXP, BOOLTHEN, CONTROL and VALMEM syntax
+already implemented here. There are both accepted programs and lexical or syntax errors.
+Could you go over these tests and add missing feature tests to match the lexer/parser 
+behavior described here? Keep the fixes focused on those features.
+ */
 /**
    @author xkohela00
 
@@ -111,13 +122,12 @@ static int reset_mismatches(void **state) {
 		test_results |= cmocka_run_group_tests_name((name), (tests), NULL, NULL);                            \
 	} while (0)
 
-/*===============
-  PROGRAM STRUCTURE, SECTION 2
-  ===============*/
+/*
+  PROGRAM STRUCTURE
+*/
 
 static void spec_factorial_example(void **state) {
 	(void)state;
-	// the example program from section 2
 	ACCEPTED("import ifj26.*\n"
 	         "def factorial(n: Int): Int =\n"
 	         "  var result = 1\n"
@@ -223,7 +233,7 @@ static void only_functions_at_top_level(void **state) {
 }
 
 /*
-  FUNCTIONS, SECTION 2.3
+  FUNCTIONS
 */
 
 static void function_forms(void **state) {
@@ -387,7 +397,7 @@ static void blocks_cant_be_empty(void **state) {
 	             "  print(1)\n");
 	SYNTAX_ERROR(MAIN("  while true do\n"
 	                  "  print(1)\n"));
-	// () can stand for an empty body, example from section 2.1
+	// () can stand for an empty body
 	ACCEPTED(MAIN("  val x = 1\n"
 	              "  if x < 5 then\n"
 	              "    print(\"prilis malo\")\n"
@@ -532,7 +542,6 @@ static void assignments(void **state) {
 
 static void if_statements(void **state) {
 	(void)state;
-	// base form from section 2.4
 	ACCEPTED(MAIN("  val x = 1\n"
 	              "  if x < 5 then\n"
 	              "    print(1)\n"
@@ -634,7 +643,6 @@ static void malformed_expressions(void **state) {
 
 static void funexp_calls_in_expressions(void **state) {
 	(void)state;
-	// the example from section 5.1
 	ACCEPTED("import ifj26.*\n"
 	         "def factorial(n: Int): Int =\n"
 	         "  if n < 2 then\n"
@@ -676,7 +684,6 @@ static void boolthen_if_without_else_and_else_if(void **state) {
 	              "  if x < 0 then\n"
 	              "    print(\"negative\")\n"
 	              "  print(x)\n"));
-	// the else if example from section 5.2
 	ACCEPTED(MAIN("  val x = 1\n"
 	              "  if x < 0 then\n"
 	              "    print(\"negative\")\n"
@@ -698,7 +705,6 @@ static void boolthen_if_without_else_and_else_if(void **state) {
 
 static void control_if_expressions(void **state) {
 	(void)state;
-	// the examples from section 5.3
 	ACCEPTED(MAIN("  var x = -5\n"
 	              "  val absolute = if x < 0 then 0 - x else x\n"
 	              "  val abs2 = if x < 0 then\n"
@@ -747,7 +753,6 @@ static void control_one_line_branches(void **state) {
 
 static void control_for_loops(void **state) {
 	(void)state;
-	// the examples from section 5.3
 	ACCEPTED(MAIN("  for i <- 1 to 10 by 2 do\n"
 	              "    print(i)\n"
 	              "  val limit = 10\n"

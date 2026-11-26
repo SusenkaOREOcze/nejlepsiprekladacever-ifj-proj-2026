@@ -1,3 +1,13 @@
+/*
+AI PROMPT:
+Look at file "src/tests/test_syntax_anal.c" and the parser in "src/syntax_anal.c".
+These cmocka tests use a fake lexer and semantic-action callback to focus on syntax.
+They cover parser setup and token lookahead, lexer/parser errors, expressions and
+precedence (including calls, members, if-expressions, nesting and malformed input),
+statement forms, separators, indentation-based blocks, if/while/for syntax, function
+headers and whole-program structure + allocation failures. Have a look through the
+tests and edit/add anything needed so they check the parser behavior above.
+ */
 /**
  * @file test_syntax_anal.c
  * @author xkohela00
