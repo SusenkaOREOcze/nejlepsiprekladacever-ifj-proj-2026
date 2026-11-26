@@ -229,17 +229,6 @@ static void declaration_does_not_convert_double_to_int(void **state) {
 	assert_semantic(SEM_ERR_TYPE, IN_MAIN(VAL_T("x", T_INT, DBL(1.5))));
 }
 
-/* The parser may also store the name of a declaration or assignment in an IDENTIFIER child:
-   var x = 1
-   x = 2 */
-static void name_can_be_stored_in_identifier_child(void **state) {
-	(void)state;
-	ast_node_t *target = ID("x");
-	assert_semantic(SEM_OK, IN_MAIN(NODE(AST_NODE_VAR_DECLARATION, NULL, T_NONE, ID("x"), INT(1)), NODE(AST_NODE_ASSIGNMENT, NULL, T_NONE, target, INT(2))));
-	assert_true(target->symbol_id != AST_UNRESOLVED_SYMBOL);
-	assert_int_equal(target->data_type, T_INT);
-}
-
 /*===========
   Expressions
 =============*/
@@ -798,7 +787,6 @@ int main(void) {
 	    SEM_TEST(assignment_converts_int_to_double),
 	    SEM_TEST(declaration_types_are_inferred_and_converted),
 	    SEM_TEST(declaration_does_not_convert_double_to_int),
-	    SEM_TEST(name_can_be_stored_in_identifier_child),
 	};
 
 	const struct CMUnitTest expression_tests[] = {

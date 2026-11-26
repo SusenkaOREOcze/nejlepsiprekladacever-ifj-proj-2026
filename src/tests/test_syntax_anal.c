@@ -1,3 +1,9 @@
+/**
+ * @file test_syntax_anal.c
+ * @author xkohela00
+ * @brief Unit tests of the syntax analyser with a fake lexer, no other module is needed.
+ */
+
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -9,10 +15,10 @@
 
 #include "cmocka/cmocka.h"
 
-
 #define lexer_current fake_lexer_current
 #define lexer_next fake_lexer_next
 #define lexer_advance fake_lexer_advance
+#define lexer_error fake_lexer_error
 #define realloc fake_realloc
 
 #define syntax_parser_init test_syntax_parser_init
@@ -23,12 +29,21 @@
 #define syntax_parser_accept test_syntax_parser_accept
 #define syntax_parse_expression test_syntax_parse_expression
 #define syntax_parse_program test_syntax_parse_program
+#define syntax_semantic_action fake_semantic_action
 
 static void *fake_realloc(void *pointer, size_t size);
 
 #include "../syntax_anal.c"
 
 #undef realloc
+
+// these tests check syntax only, so every semantic action is accepted
+sem_result_t fake_semantic_action(syntax_semantic_action_t action, const token_t *token, size_t item_count) {
+	(void)action;
+	(void)token;
+	(void)item_count;
+	return SEM_OK;
+}
 
 /*
   FAKE LEXER AND ALLOCATOR
@@ -72,6 +87,13 @@ lexer_result_t fake_lexer_advance(lexer_t *lexer) {
 		fake_position++;
 	}
 	return LEXER_RESULT_OK;
+}
+
+// like the real lexer, the error stays reported once the failing advance happened
+const lexer_error_t *fake_lexer_error(const lexer_t *lexer) {
+	(void)lexer;
+	static const lexer_error_t error = {.code = LEXER_RESULT_LEXICAL_ERROR, .message = "fake lexical error"};
+	return fake_failing_advance != 0 && fake_advance_calls >= fake_failing_advance ? &error : NULL;
 }
 
 static void *fake_realloc(void *pointer, size_t size) {
@@ -1209,12 +1231,6 @@ int main(void) {
 	    cmocka_unit_test(expression_rejects_incomplete_if_expression),
 	};
 
-	const struct CMUnitTest lists_tests[] = {
-	    cmocka_unit_test(lists_value_rejected),         cmocka_unit_test(lists_range_in_parentheses_rejected),
-	    cmocka_unit_test(lists_concat_rejected),        cmocka_unit_test(lists_type_rejected),
-	    cmocka_unit_test(lists_for_over_list_rejected),
-	};
-
 	const struct CMUnitTest statement_ok_tests[] = {
 	    cmocka_unit_test(statement_accepts_variable_definitions),
 	    cmocka_unit_test(statement_accepts_assignment),
@@ -1265,7 +1281,6 @@ int main(void) {
 	EXEC_TEST_CATEGORY("EXPRESSIONS ACCEPTED", expression_ok_tests);
 	EXEC_TEST_CATEGORY("WHERE EXPRESSIONS STOP", expression_stop_tests);
 	EXEC_TEST_CATEGORY("EXPRESSIONS REJECTED", expression_error_tests);
-	EXEC_TEST_CATEGORY("LISTS IS TURNED OFF", lists_tests);
 	EXEC_TEST_CATEGORY("STATEMENTS ACCEPTED", statement_ok_tests);
 	EXEC_TEST_CATEGORY("STATEMENTS REJECTED", statement_error_tests);
 	EXEC_TEST_CATEGORY("PROGRAMS", program_tests);

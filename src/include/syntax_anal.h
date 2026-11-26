@@ -74,7 +74,7 @@ typedef enum SyntaxSemanticAction {
 } syntax_semantic_action_t;
 
 /**
- * @brief Sends one event to the semantic analyser, defined in semantic_anal.c.
+ * @brief Sends one event to the semantic analyser, defined in semantic_actions.c.
  *
  * @param action What was recognized.
  * @param token Token of it, NULL if there is none. It is only borrowed for the call.

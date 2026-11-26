@@ -24,8 +24,8 @@
 sem_result_t sem_analyze(ast_t *ast, funct_t *functions);
 
 /*
- * The parser sends its events to syntax_semantic_action() (declared in syntax_anal.h). The events
- * build the AST and SEMANTIC_ACTION_PROGRAM runs sem_analyze() on it.
+ * The parser sends its events to syntax_semantic_action() (declared in syntax_anal.h, defined in
+ * semantic_actions.c). The events build the AST and SEMANTIC_ACTION_PROGRAM runs sem_analyze() on it.
  */
 
 /**

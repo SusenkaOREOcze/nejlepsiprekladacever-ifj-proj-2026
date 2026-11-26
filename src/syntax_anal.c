@@ -1,3 +1,20 @@
+/**
+ * @file syntax_anal.c
+ * @author xkohela00
+ * @brief IFJ26 syntax analyser implementation.
+ *
+ * Expressions are parsed by operator precedence analysis driven by PRECEDENCE_TABLE, definitions
+ * and statements by recursive descent. Tokens come from the lexer one at a time, besides the current
+ * token the parser can also look at the next one.
+ *
+ * Every recognized construct is reported to the semantic analyser through syntax_semantic_action()
+ * in postfix order, the semantic actions build the AST from these events.
+ *
+ * The first error stops parsing. A syntax error is printed once as
+ * "<line>: syntax error: unexpected '<lexeme>'." and gives exit code 2, lexical and semantic errors
+ * are printed by their own modules.
+ */
+
 #include "include/syntax_anal.h"
 
 #include <stdio.h>
@@ -837,10 +854,15 @@ static bool parse_type(syntax_parser_t *parser) {
 	}
 }
 
-/** Parse the optional comma-separated remainder of a parameter list. */
-static bool parse_params_tail(syntax_parser_t *parser);
-
-/** Parse an optional first parameter and its remaining parameters. */
+/**
+ * @brief parses a possibly empty parameter list, the parser sits after the open paren
+ *
+ * every parameter is name : type, they are split by commas and a trailing comma is allowed
+ * only when a line break follows it (section 1.2 of the spec)
+ *
+ * @param parser parser sitting after the open paren
+ * @return true on success, the close paren is left for the caller
+ */
 static bool parse_param_list(syntax_parser_t *parser) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
@@ -850,46 +872,35 @@ static bool parse_param_list(syntax_parser_t *parser) {
 	if (token->type == TOKEN_RPAREN) {
 		return true;
 	}
-	if (token->type != TOKEN_IDENTIFIER) {
-		parser->failed = true;
-		return false;
-	}
-	if (!syntax_report(parser, SEMANTIC_ACTION_PARAMETER, token, 0) || !syntax_parser_advance(parser) ||
-	    !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
-		return false;
-	}
-	return parse_params_tail(parser);
-}
-
-static bool parse_params_tail(syntax_parser_t *parser) {
-	const token_t *comma_token = syntax_parser_current(parser);
-	size_t comma_line = comma_token != NULL ? comma_token->location.line : 0;
-	bool comma = false;
-	if (!syntax_parser_accept(parser, TOKEN_COMMA, &comma)) {
-		return false;
-	}
-	if (!comma) {
-		return true;
-	}
-	const token_t *token = syntax_parser_current(parser);
-	if (token != NULL && token->type == TOKEN_RPAREN) {
-		// trailing comma only ok before a line break, section 1.2 of the spec
-		// lexer drops newlines inside parens so compare line numbers
-		if (token->location.line <= comma_line) {
+	for (;;) {
+		if (token == NULL || token->type != TOKEN_IDENTIFIER) {
 			parser->failed = true;
 			return false;
 		}
-		return true;
+		if (!syntax_report(parser, SEMANTIC_ACTION_PARAMETER, token, 0) || !syntax_parser_advance(parser) ||
+		    !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
+			return false;
+		}
+
+		const token_t *comma_token = syntax_parser_current(parser);
+		const size_t comma_line = comma_token != NULL ? comma_token->location.line : 0;
+		bool comma = false;
+		if (!syntax_parser_accept(parser, TOKEN_COMMA, &comma)) {
+			return false;
+		}
+		if (!comma) {
+			return true;
+		}
+		token = syntax_parser_current(parser);
+		if (token != NULL && token->type == TOKEN_RPAREN) {
+			// lexer drops newlines inside parens so compare line numbers
+			if (token->location.line <= comma_line) {
+				parser->failed = true;
+				return false;
+			}
+			return true;
+		}
 	}
-	if (token == NULL || token->type != TOKEN_IDENTIFIER) {
-		parser->failed = true;
-		return false;
-	}
-	if (!syntax_report(parser, SEMANTIC_ACTION_PARAMETER, token, 0) || !syntax_parser_advance(parser) ||
-	    !syntax_parser_expect(parser, TOKEN_COLON) || !parse_type(parser)) {
-		return false;
-	}
-	return parse_params_tail(parser);
 }
 
 /** Parse an optional colon and type annotation. */
@@ -932,7 +943,7 @@ static bool parse_stmt_end(syntax_parser_t *parser) {
 }
 
 /** Forward declarations for mutually recursive statement and value rules. */
-static bool parse_if(syntax_parser_t *parser);
+static bool parse_if(syntax_parser_t *parser, bool needs_else);
 static bool parse_block(syntax_parser_t *parser);
 static bool parse_value(syntax_parser_t *parser);
 static bool parse_statement(syntax_parser_t *parser);
@@ -1042,9 +1053,10 @@ static bool parse_inline_body(syntax_parser_t *parser) {
  * @brief parses the branch after else, block or nested if or one line body
  *
  * @param parser parser sitting after else
+ * @param needs_else true when the if is a value, a nested else if then needs its own else too
  * @return true on success
  */
-static bool parse_else_body(syntax_parser_t *parser) {
+static bool parse_else_body(syntax_parser_t *parser, bool needs_else) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
@@ -1054,13 +1066,13 @@ static bool parse_else_body(syntax_parser_t *parser) {
 		return syntax_parser_advance(parser) && parse_block(parser);
 	}
 	if (token->type == TOKEN_IF) {
-		return parse_if(parser);
+		return parse_if(parser, needs_else);
 	}
 	return parse_inline_body(parser) && parse_stmt_end(parser);
 }
 
 /** Parse an optional inline ELSE branch or the inline statement terminator, has_else says which. */
-static bool parse_else_line(syntax_parser_t *parser, bool *has_else) {
+static bool parse_else_line(syntax_parser_t *parser, bool needs_else, bool *has_else) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
@@ -1068,45 +1080,64 @@ static bool parse_else_line(syntax_parser_t *parser, bool *has_else) {
 	}
 	if (token->type == TOKEN_ELSE) {
 		*has_else = true;
-		return syntax_parser_advance(parser) && parse_else_body(parser);
+		return syntax_parser_advance(parser) && parse_else_body(parser, needs_else);
 	}
 
 	// one line then with else on the next line, skip the newline and go on with else
 	const token_t *next = syntax_parser_next(parser);
 	if (token->type == TOKEN_NEWLINE && next != NULL && next->type == TOKEN_ELSE) {
 		*has_else = true;
-		return syntax_parser_advance(parser) && syntax_parser_advance(parser) && parse_else_body(parser);
+		return syntax_parser_advance(parser) && syntax_parser_advance(parser) &&
+		       parse_else_body(parser, needs_else);
 	}
 	*has_else = false;
+	if (needs_else) {
+		// if used as a value must have else, section 5.3 of the spec
+		parser->failed = true;
+		return false;
+	}
 	return parse_stmt_end(parser);
 }
 
 /** Parse the optional ELSE branch following a block-style THEN branch, has_else says if there was one. */
-static bool parse_else_block(syntax_parser_t *parser, bool *has_else) {
+static bool parse_else_block(syntax_parser_t *parser, bool needs_else, bool *has_else) {
 	if (!syntax_parser_accept(parser, TOKEN_ELSE, has_else)) {
 		return false;
 	}
-	return !*has_else || parse_else_body(parser);
+	if (!*has_else && needs_else) {
+		// if used as a value must have else, section 5.3 of the spec
+		parser->failed = true;
+		return false;
+	}
+	return !*has_else || parse_else_body(parser, needs_else);
 }
 
 /** Parse either block-style or inline content following THEN, has_else says if an ELSE branch was parsed. */
-static bool parse_then_tail(syntax_parser_t *parser, bool *has_else) {
+static bool parse_then_tail(syntax_parser_t *parser, bool needs_else, bool *has_else) {
 	const token_t *token = syntax_parser_current(parser);
 	if (token == NULL) {
 		parser->failed = true;
 		return false;
 	}
 	if (token->type == TOKEN_NEWLINE) {
-		return syntax_parser_advance(parser) && parse_block(parser) && parse_else_block(parser, has_else);
+		return syntax_parser_advance(parser) && parse_block(parser) &&
+		       parse_else_block(parser, needs_else, has_else);
 	}
-	return parse_inline_body(parser) && parse_else_line(parser, has_else);
+	return parse_inline_body(parser) && parse_else_line(parser, needs_else, has_else);
 }
 
-/** Parse an IF condition and its THEN/optional ELSE content. */
-static bool parse_if(syntax_parser_t *parser) {
+/**
+ * @brief parses an if condition and its then and optional else part
+ *
+ * @param parser parser sitting on if
+ * @param needs_else true when the if is a value (initializer, assigned value, return value or one
+ *                   line function body), then else is required
+ * @return true on success
+ */
+static bool parse_if(syntax_parser_t *parser, bool needs_else) {
 	bool has_else = false;
 	if (!syntax_parser_expect(parser, TOKEN_IF) || !syntax_parse_expression(parser) ||
-	    !syntax_parser_expect(parser, TOKEN_THEN) || !parse_then_tail(parser, &has_else)) {
+	    !syntax_parser_expect(parser, TOKEN_THEN) || !parse_then_tail(parser, needs_else, &has_else)) {
 		return false;
 	}
 	// condition, then branch and maybe else branch are done
@@ -1121,7 +1152,7 @@ static bool parse_value(syntax_parser_t *parser) {
 		return false;
 	}
 	if (token->type == TOKEN_IF) {
-		return parse_if(parser);
+		return parse_if(parser, true);
 	}
 	return syntax_parse_expression(parser) && parse_stmt_end(parser);
 }
@@ -1241,6 +1272,29 @@ static bool parse_do_body(syntax_parser_t *parser) {
 	return parse_inline_body(parser) && parse_stmt_end(parser);
 }
 
+/**
+ * @brief tells if a statement starts with an operator that would continue the previous line
+ *
+ * Section 1.2 of the spec says a logical line cannot start with an operator. Unary minus is still
+ * allowed when it is written right before its operand (-x), like Scala does it, but "+ 2" or "- 2"
+ * at the start of a line looks like the rest of the previous expression and is rejected.
+ *
+ * @param parser parser sitting on the first token of the statement
+ * @return true when the statement must be rejected
+ */
+static bool statement_starts_with_operator(syntax_parser_t *parser) {
+	const token_t *token = syntax_parser_current(parser);
+	if (token->type == TOKEN_PLUS) {
+		return true;
+	}
+	if (token->type != TOKEN_MINUS) {
+		return false;
+	}
+	const token_t *next = syntax_parser_next(parser);
+	return next == NULL || next->location.line != token->location.line ||
+	       next->location.column != token->location.column + token->length;
+}
+
 /** Parse one declaration, assignment, control statement, or expression statement. */
 static bool parse_statement(syntax_parser_t *parser) {
 	const token_t *token = syntax_parser_current(parser);
@@ -1303,7 +1357,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 		return syntax_report(parser, SEMANTIC_ACTION_FOR, NULL, guard_count);
 	}
 	case TOKEN_IF:
-		return parse_if(parser);
+		return parse_if(parser, false);
 	case TOKEN_IDENTIFIER: {
 		// grammar rules 32 to 35, ID <id_stmt>, the name is eaten first
 		// then assign means assignment, anything else is the rest of an expression statement (expr_tail)
@@ -1325,7 +1379,7 @@ static bool parse_statement(syntax_parser_t *parser) {
 		return prec_parse_tail(parser) && parse_stmt_end(parser);
 	}
 	default:
-		if (!expression_start(token->type)) {
+		if (!expression_start(token->type) || statement_starts_with_operator(parser)) {
 			parser->failed = true;
 			return false;
 		}
