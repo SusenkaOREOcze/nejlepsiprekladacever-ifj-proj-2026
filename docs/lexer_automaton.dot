@@ -1,0 +1,248 @@
+// Labels show input / result. 
+// [ASCII] means one ASCII byte.
+// [ASCII] = [\x00-\x7F], [^ASCII] = [\x80-\xFF].
+digraph lexer_automaton {
+
+    graph [label="Lexer automaton", labelloc=t, rankdir=LR,
+        bgcolor=transparent, fontname="DejaVu Sans", fontsize=16,
+        nodesep=1.6, ranksep=2.2, pad=0.6, splines=spline,
+        outputorder=edgesfirst, newrank=true, compound=true,
+        concentrate=false, overlap=false, remincross=true,
+        forcelabels=true, mclimit=2.0, bgcolor="#ffffff"];
+
+    node [shape=circle, style=filled, fillcolor=white, color="#64748B",
+        fontname="DejaVu Sans", fontsize=16, margin="0.11,0.08"];
+
+    edge [color="#37414f", fontcolor="#334155", fontname="DejaVu Sans",
+        fontsize=14, arrowsize=0.7, decorate=true, labelfloat=false];
+
+    subgraph cluster_start {
+        label="Start";
+        style="rounded,filled"; color="#ffffff"; fillcolor="#ffffff";
+
+        start [shape=point, width=0.08];
+        scan [label="SCAN", fillcolor="#DBEAFE", color="#2563EB", penwidth=2, ordering=out];
+        start -> scan;
+    }
+
+
+    subgraph cluster_layout {
+        label="Layout";
+        style="rounded,filled"; color="#93C5FD"; fillcolor="#F3F8FF";
+
+        prefix [label="LINE\nPREFIX"];
+        layout_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        layout_error [shape=doublecircle, label="ERROR",
+            fillcolor="#FEE2E2", color="#DC2626"];
+
+        // Count leading spaces.
+        prefix -> prefix [label="[ ] [count_indentation] / ++*width"];
+        // Remember a leading tab.
+        prefix -> prefix [label="\\t [count_indentation] / has_tab=true"];
+        // Ignore spaces after a same-line block comment.
+        prefix -> prefix [label="[ \\t] [!count_indentation] / -"];
+        // Start a new indentation count after a blank line.
+        prefix -> prefix [label="\\n / *width=0, has_tab=false, count_indentation=true"];
+        prefix -> layout_error:n [label="\\r / ERROR", color="#DC2626"];
+        // The first code character is inspected but left for SCAN.
+        prefix -> layout_error:nw [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII]) [has_tab] / ERROR", color="#DC2626", fontsize=12];
+        prefix -> layout_error:w [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth>0, width<=logical_line_indent] / ERROR", color="#DC2626", fontsize=12];
+        prefix -> layout_error:sw [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth==0, width<current_width, indentation_widths[matching_level]!=width] / ERROR", color="#DC2626", fontsize=12];
+        prefix -> layout_done:nw [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth==0, width>current_width] / TOKEN_INDENT", fontsize=12];
+        prefix -> layout_done:sw [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth==0, width<current_width, indentation_widths[matching_level]==width] / TOKEN_DEDENT", fontsize=12];
+        prefix -> scan [label="EOF | (?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth==0, width==current_width]", fontsize=12];
+        prefix -> scan [label="(?=(?![/][/*]|[ \\t\\r\\n])[ASCII])\n[parenthesis_depth>0, width>logical_line_indent]", fontsize=12];
+    }
+
+    subgraph cluster_ident {
+        label="Identifiers";
+        style="rounded,filled"; color="#A5B4FC"; fillcolor="#F7F7FF";
+
+        ident [label="IDENTIFIER"];
+        ident_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        ident -> ident [label="[A-Za-z0-9_] / -"];
+        // A lone underscore is a wildcard.
+        ident -> ident_done [label="^_$ / TOKEN_WILDCARD"];
+        // Classify these complete words as keywords.
+        ident -> ident_done [label="^(?:Boolean|Double|Int|List|String|Unit|case|class|def|do|else|extension|false|for|if|import|match|return|then|true|type|val|var|while)$ / TOKEN_*", fontsize=12];
+        // Other valid names are identifiers.
+        ident -> ident_done [label="^[A-Za-z_][A-Za-z0-9_]*$ / TOKEN_IDENTIFIER"];
+    }
+
+    subgraph cluster_number {
+        label="Numbers";
+        style="rounded,filled"; color="#C4B5FD"; fillcolor="#FAF7FF";
+        integer [label="INTEGER"];
+        dot [label="DOT"];
+        fraction [label="FRACTION"];
+        exponent [label="EXPONENT"];
+
+        number_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        number_error [shape=doublecircle, label="ERROR", fillcolor="#FEE2E2", color="#DC2626"];
+
+        integer -> integer [label="[0-9_] / -"];
+        integer -> dot [label="\\. / -"];
+        dot -> fraction [label="[0-9] / -"];
+        fraction -> fraction [label="[0-9_] / -"];
+        integer -> exponent [label="[eE][+-]?[0-9] / -"];
+        fraction -> exponent [label="[eE][+-]?[0-9] / -"];
+        exponent -> exponent [label="[0-9_] / -"];
+        // Reject leading zeroes, trailing underscores, and bad exponents.
+        integer -> number_error [label="^0[0-9_]+$|_$|[eE][+-]?(?![0-9]) / ERROR", color="#DC2626"];
+        dot -> number_error [label="[^0-9] / ERROR", color="#DC2626"];
+        fraction -> number_error [label="_$|[eE][+-]?(?![0-9]) / ERROR", color="#DC2626"];
+        exponent -> number_error [label="_$ / ERROR", color="#DC2626"];
+        integer -> number_error [label="(?![eE][+-]?[0-9]|[dD](?=[^A-Za-z0-9_]))[A-Za-z_] / ERROR", color="#DC2626", fontsize=12];
+        fraction -> number_error [label="(?![eE][+-]?[0-9]|[dD](?=[^A-Za-z0-9_]))[A-Za-z_] / ERROR", color="#DC2626", fontsize=12];
+        exponent -> number_error [label="(?![dD](?=[^A-Za-z0-9_]))[A-Za-z_] / ERROR", color="#DC2626", fontsize=12];
+        integer -> number_done [label="(?=[^A-Za-z0-9_.]) / TOKEN_INTEGER"];
+        integer -> number_done [label="[dD](?=[^A-Za-z0-9_]) / TOKEN_DOUBLE"];
+        fraction -> number_done [label="[dD]?(?=[^A-Za-z0-9_]) / TOKEN_DOUBLE"];
+        exponent -> number_done [label="[dD]?(?=[^A-Za-z0-9_]) / TOKEN_DOUBLE"];
+    }
+
+    subgraph cluster_string {
+        label="String";
+        style="rounded,filled"; color="#86EFAC"; fillcolor="#F3FFF6";
+
+        quote [label="AFTER FIRST\nQUOTE"];
+        body [label="STRING\nBODY"];
+        escape [label="ESCAPE"];
+        raw0 [label="RAW\n0 trailing quotes"];
+        raw1 [label="RAW\n1 trailing quote"];
+        raw2 [label="RAW\n2 trailing quotes"];
+        string_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        string_error [shape=doublecircle, label="ERROR", fillcolor="#FEE2E2", color="#DC2626"];
+
+        // Two more quotes open a multiline string.
+        quote -> raw0 [label="[\"]{2} / -"];
+        quote -> string_done [label="[\"](?![\"]) / TOKEN_STRING"];
+        quote -> escape [label="[\\] / -"];
+        quote -> body [label="(?![\"\\\\n\\r])[ASCII] / -"];
+        quote -> string_error [label="\\n|\\r|EOF|[^ASCII] / ERROR", color="#DC2626"];
+        body -> body [label="(?![\"\\\\n\\r])[ASCII] / -"];
+        // A backslash starts an escape sequence.
+        body -> escape [label="[\\] / -"];
+        escape -> body [label="[\"\\\\nrt] / -"];
+        body -> string_done [label="[\"] / TOKEN_STRING"];
+        raw0 -> raw0 [label="(?![\"])[ASCII] / -"];
+        // One possible closing quote has been read.
+        raw0 -> raw1 [label="[\"] / -"];
+        raw1 -> raw0 [label="(?![\"])[ASCII] / -"];
+        // Two possible closing quotes have been read.
+        raw1 -> raw2 [label="[\"] / -"];
+        raw2 -> raw0 [label="(?![\"])[ASCII] / -"];
+        // The third quote closes the multiline string.
+        raw2 -> string_done [label="[\"] / TOKEN_MULTILINE_STRING"];
+        escape -> string_error [label="[^\"\\\\nrt]|EOF / ERROR", color="#DC2626"];
+        body -> string_error [label="\\n|\\r|EOF|[^ASCII] / ERROR", color="#DC2626"];
+        raw0 -> string_error [label="EOF|[^ASCII] / ERROR", color="#DC2626"];
+        raw1 -> string_error [label="EOF|[^ASCII] / ERROR", color="#DC2626"];
+        raw2 -> string_error [label="EOF|[^ASCII] / ERROR", color="#DC2626"];
+    }
+
+    subgraph cluster_comment {
+        label="Comments";
+        style="rounded,filled"; color="#FCD34D"; fillcolor="#FFFBEB";
+
+        line_comment [label="LINE\nCOMMENT"];
+        block_comment [label="BLOCK\nCOMMENT\ndepth=1"];
+        after_block [label="FINISH MULTILINE\nCOMMENT LINE"];
+        comment_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        comment_error [shape=doublecircle, label="ERROR", fillcolor="#FEE2E2", color="#DC2626"];
+
+        { rank=same; line_comment; block_comment; }
+        { rank=same; comment_done; comment_error; }
+
+        // Read until LF
+        line_comment -> line_comment [label="(?!\\n)[ASCII] / -"];
+        line_comment -> comment_error:n [label="[^ASCII] / ERROR", color="#DC2626"];
+
+        // Scan a nested block comment.
+        block_comment -> block_comment [label="[/][*] [lexer->comment_depth<SIZE_MAX]\n/ ++lexer->comment_depth"];
+        block_comment -> comment_error:nw [label="[/][*] [lexer->comment_depth==SIZE_MAX] / ERROR", color="#DC2626"];
+        block_comment -> block_comment [label="[*][/] [lexer->comment_depth>1] / --lexer->comment_depth"];
+        block_comment -> block_comment [label="\\n / *contains_newline=true"];
+        block_comment -> block_comment [label="(?!(?:[/][*]|[*][/]|\\n))[ASCII] / -"];
+        block_comment -> comment_error:w [label="[^ASCII]|EOF / ERROR", color="#DC2626"];
+
+        // Close the outer block comment.
+        block_comment -> after_block [label="[*][/] [lexer->comment_depth==1, *contains_newline] / --lexer->comment_depth"];
+
+        // Only whitespace may follow a multiline block comment.
+        after_block -> after_block [label="[ \\t] / -"];
+        after_block -> comment_error:sw [label="[^ \\t\\n] / ERROR", color="#DC2626"];
+        after_block -> comment_done [label="\\n|EOF [!at_line_start, parenthesis_depth==0] / TOKEN_NEWLINE"];
+    }
+
+    subgraph cluster_symbol {
+        label="Symbols";
+        style="rounded,filled"; color="#CBD5E1"; fillcolor="#F8FAFC";
+
+        symbol [label="SYMBOL"];
+        symbol_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        symbol_error [shape=doublecircle, label="ERROR", fillcolor="#FEE2E2", color="#DC2626"];
+
+        symbol -> symbol_done [label="[()\\[\\],;.:] / TOKEN_*"];
+        symbol -> symbol_done [label="[-*/] / TOKEN_*"];
+        // Lookahead keeps a single operator separate from a pair.
+        symbol -> symbol_done [label="\\+(?!\\+)|\\|(?!\\|)|=(?![=>])|!(?!=)|<(?![=-])|>(?!=) / TOKEN_*", fontsize=12];
+        // These are the two-character operators.
+        symbol -> symbol_done [label="\\+\\+|\\|\\||==|=>|!=|<=|<-|>=|&& / TOKEN_*", fontsize=12];
+        // A lone ampersand and unknown symbols are errors.
+        symbol -> symbol_error [label="&(?!&)|[^()\\[\\],;.:+*/|=!<>&-] / ERROR", color="#DC2626"];
+    }
+
+    subgraph cluster_main_annotation {
+        label="Main Annotation";
+        style="rounded,filled"; color="#FBCFE8"; fillcolor="#FFFAFB";
+
+        main_annotation [label="AFTER @"];
+        main_annotation_done [shape=box, style="rounded,filled", label="TOKEN",
+            fillcolor="#DCFCE7", color="#16A34A"];
+        main_annotation_error [shape=doublecircle, label="ERROR", fillcolor="#FEE2E2", color="#DC2626"];
+
+        // The word boundary accepts @main only.
+        main_annotation -> main_annotation_done [label="\\bmain\\b / TOKEN_MAIN_ANNOTATION"];
+        main_annotation -> main_annotation_error [label="(?!\\bmain\\b)[ASCII]|EOF / ERROR", color="#DC2626"];
+    }
+
+    // Comment exits depend only on the scanner state retained on entry.
+    line_comment -> scan [label="(?=\\n)|EOF [!at_line_start]"];
+    line_comment -> prefix [label="(?=\\n)|EOF [at_line_start]\n/ *width=0, has_tab=false, count_indentation=true", fontsize=12];
+    block_comment -> scan [label="[*][/] [comment_depth==1, !contains_newline, !at_line_start]\n/ --comment_depth", fontsize=12];
+    block_comment -> prefix [label="[*][/] [comment_depth==1, !contains_newline, at_line_start]\n/ --comment_depth, count_indentation=false", fontsize=12];
+    after_block -> prefix [label="\\n|EOF [at_line_start]\n/ *width=0, has_tab=false, count_indentation=true", fontsize=12];
+    after_block -> scan [label="\\n|EOF [!at_line_start, parenthesis_depth>0]\n/ at_line_start=true", fontsize=12];
+
+    // Two slashes start a line comment.
+    scan -> line_comment [label="[/]{2} / -"];
+    // Slash-star starts a block comment.
+    scan -> block_comment [label="[/][*]\n/ *contains_newline=false, lexer->comment_depth=1", fontsize=12];
+    prefix -> line_comment [label="[/]{2} / -"];
+    prefix -> block_comment [label="[/][*] / *contains_newline=false, lexer->comment_depth=1"];
+    scan -> ident [label="[A-Za-z_] / -"];
+    scan -> integer [label="[0-9] / -"];
+    // A dot starts a number only before a digit.
+    scan -> dot [label="\\.(?=[0-9]) / -"];
+    scan -> quote [label="\" / -"];
+    scan -> main_annotation [label="@ / -"];
+    scan -> symbol [label="(?![A-Za-z_0-9\"@ \\t\\r\\n]|\\.(?=[0-9])|[/][/*])[ASCII] / -", fontsize=12];
+
+    scan -> prefix [label="(?=[ASCII])|EOF [at_line_start]", fontsize=12];
+    scan -> scan [label="[ \\t] / -"];
+    scan -> scan [label="\\n [lexer->parenthesis_depth>0] / lexer->at_line_start=true"];
+    scan -> layout_done [label="\\n [lexer->parenthesis_depth==0]\n/ lexer->at_line_start=true, TOKEN_NEWLINE", fontsize=12];
+
+    scan -> layout_done [label="EOF [indent_count>0] / TOKEN_DEDENT"];
+    scan -> layout_done [label="EOF [indent_count==0] / TOKEN_EOF"];
+    scan -> layout_error [label="[^ASCII]|\\r / ERROR", color="#DC2626"];
+
+
+}
