@@ -1,4 +1,5 @@
 /**
+   @author xkohela00
 
    Every test feeds IFJ26 source text through lexer and parser.
 
@@ -18,13 +19,14 @@
 #include <string.h>
 
 #include "../include/lexer.h"
+#include "../include/semantic_anal.h"
 #include "../include/syntax_anal.h"
 
 #include "cmocka/cmocka.h"
 
-/*===============
+/*
   HELPERS
-  ===============*/
+*/
 
 enum {
 	RESULT_OK = 0,
@@ -56,8 +58,14 @@ static int analyse(const char *source) {
 			result = RESULT_INTERNAL;
 		} else if (!syntax_parse_program(&parser)) {
 			const lexer_error_t *error = lexer_error(&lexer);
-			if (parser.internal_error) {
+			if (parser.internal_error || parser.semantic_result == SEM_ERR_INTERNAL) {
 				result = RESULT_INTERNAL;
+			} else if (parser.semantic_result != SEM_OK) {
+				/*
+				 * the whole program was parsed, semantic errors are tested in test_semantic_actions.c,
+				 * only a call of something else than a name is a syntax error found by the semantic analyser
+				 */
+				result = parser.semantic_result == SEM_ERR_SYNTAX ? RESULT_SYNTAX : RESULT_OK;
 			} else if (error != NULL) {
 				result = error->code == LEXER_RESULT_LEXICAL_ERROR ? RESULT_LEXICAL : RESULT_INTERNAL;
 			} else {
@@ -65,6 +73,7 @@ static int analyse(const char *source) {
 			}
 		}
 	}
+	sem_actions_free();
 	lexer_destroy(&lexer);
 	fclose(file);
 	return result;
@@ -157,27 +166,6 @@ static void prolog_has_exact_form(void **state) {
 	             "  print(1)\n");
 	// any whitespace between the tokens is fine
 	ACCEPTED("import   ifj26 . *\n"
-	         "@main def main(): Unit =\n"
-	         "  print(1)\n");
-	FINISH();
-}
-
-static void prolog_can_follow_whitespace_and_comments(void **state) {
-	(void)state;
-	// only whitespace and comments can be in front of the prolog
-	ACCEPTED("// program\n"
-	         "/* block\n"
-	         "   comment */\n"
-	         "\n"
-	         "import ifj26.*\n"
-	         "@main def main(): Unit =\n"
-	         "  print(1)\n");
-	ACCEPTED("  import ifj26.*\n"
-	         "@main def main(): Unit =\n"
-	         "  print(1)\n");
-	ACCEPTED("\n"
-	         "   \n"
-	         "import ifj26.*\n"
 	         "@main def main(): Unit =\n"
 	         "  print(1)\n");
 	FINISH();
@@ -500,9 +488,9 @@ static void bad_literals_are_lexical_errors(void **state) {
 	FINISH();
 }
 
-/*===============
-  STATEMENTS, SECTIONS 2.2, 2.4, 2.5
-  ===============*/
+/*
+  STATEMENTS
+*/
 
 static void variable_definitions(void **state) {
 	(void)state;
@@ -601,9 +589,9 @@ static void calls_as_statements(void **state) {
 	FINISH();
 }
 
-/*===============
-  EXPRESSIONS, SECTION 3
-  ===============*/
+/*
+  EXPRESSIONS
+*/
 
 static void operators_and_precedence(void **state) {
 	(void)state;
@@ -810,9 +798,9 @@ static void control_for_loop_errors(void **state) {
 	FINISH();
 }
 
-/*===============
-  VALMEM, SECTION 5.4
-  ===============*/
+/*
+  VALMEM
+*/
 
 static void valmem_members(void **state) {
 	(void)state;
@@ -835,11 +823,10 @@ int main(void) {
 	int test_results = 0;
 
 	const struct CMUnitTest structure_tests[] = {
-	    SPEC_TEST(spec_factorial_example),      SPEC_TEST(prolog_is_required_once),
-	    SPEC_TEST(prolog_has_exact_form),       SPEC_TEST(prolog_can_follow_whitespace_and_comments),
-	    SPEC_TEST(main_annotation_placement),   SPEC_TEST(main_rules_are_semantic),
-	    SPEC_TEST(only_functions_at_top_level), SPEC_TEST(function_forms),
-	    SPEC_TEST(function_header_errors),
+	    SPEC_TEST(spec_factorial_example),  SPEC_TEST(prolog_is_required_once),
+	    SPEC_TEST(prolog_has_exact_form),   SPEC_TEST(main_annotation_placement),
+	    SPEC_TEST(main_rules_are_semantic), SPEC_TEST(only_functions_at_top_level),
+	    SPEC_TEST(function_forms),          SPEC_TEST(function_header_errors),
 	};
 
 	const struct CMUnitTest layout_tests[] = {
