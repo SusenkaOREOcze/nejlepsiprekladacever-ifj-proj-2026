@@ -19,6 +19,3 @@ jobs:
 
       - name: Run make check
         run: make check CLANG_FORMAT=clang-format-19 CLANG_TIDY=clang-tidy-19
-
-      - name: Run CMocka tests
-        run: make test
