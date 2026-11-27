@@ -1,0 +1,45 @@
+CC = gcc
+AR = ar
+CFLAGS ?= -std=gnu23 -Wall -Wextra -O2
+CPPFLAGS ?= -I.
+TEST_CFLAGS ?= -std=gnu23 -Wall -Wextra -g
+
+SOURCES := $(wildcard *.c)
+HEADERS := $(wildcard *.h)
+TARGET := compiler
+TEST_DIR := tests
+TEST_BIN_DIR := $(TEST_DIR)/bin
+CMOCKA_DIR := $(TEST_DIR)/cmocka
+CMOCKA_OBJ := $(TEST_BIN_DIR)/cmocka.o
+CMOCKA_LIB := $(TEST_BIN_DIR)/libcmocka.a
+TEST_SOURCES := $(wildcard $(TEST_DIR)/test_*.c)
+TEST_NAMES := $(patsubst $(TEST_DIR)/test_%.c,%,$(TEST_SOURCES))
+TEST_RUNS := $(addprefix run-,$(TEST_NAMES))
+PROJECT_SOURCES := $(filter-out main.c,$(SOURCES))
+
+.PHONY: all clean test $(TEST_RUNS)
+all: $(TARGET)
+
+$(TARGET): $(SOURCES) $(HEADERS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(SOURCES) -o $@
+
+$(CMOCKA_OBJ): $(CMOCKA_DIR)/cmocka.c $(wildcard $(CMOCKA_DIR)/*.h)
+	@mkdir -p $(TEST_BIN_DIR)
+	$(CC) $(TEST_CFLAGS) -I$(CMOCKA_DIR) -c $< -o $@
+
+$(CMOCKA_LIB): $(CMOCKA_OBJ)
+	$(AR) rcs $@ $<
+
+$(TEST_BIN_DIR)/test_%: $(TEST_DIR)/test_%.c $(PROJECT_SOURCES) $(HEADERS) $(CMOCKA_LIB)
+	$(CC) $(TEST_CFLAGS) $(CPPFLAGS) -I$(CMOCKA_DIR) $< $(PROJECT_SOURCES) $(CMOCKA_LIB) -o $@
+
+$(TEST_RUNS): run-%: $(TEST_BIN_DIR)/test_%
+	@printf 'Running %s...\n' '$*'
+	@$(TEST_BIN_DIR)/test_$*
+
+test: $(TEST_RUNS)
+	@printf 'All CMocka tests passed.\n'
+
+clean:
+	rm -f $(TARGET)
+	rm -rf $(TEST_BIN_DIR)

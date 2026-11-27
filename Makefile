@@ -44,13 +44,22 @@ TEST_BINS := $(addprefix $(TEST_BIN_DIR)/test_,$(TEST_NAMES)))
 #   lexer -> run-lexer
 TEST_RUNS := $(addprefix run-,$(TEST_NAMES))
 
+# Submission archive. Sources are flattened.
+SUBMISSION_SOURCES := $(sort $(wildcard src/*.c src/include/*.h))
+SUBMISSION_STAGE := build/submission-package
+SUBMISSION_ZIP := build/IFJ26_submission.zip
+SUBMISSION_ZIP_ABS := $(abspath $(SUBMISSION_ZIP))
+SUBMISSION_DOC := $(wildcard docs/dokumentace.pdf)
+SUBMISSION_EXTENSIONS ?= BOOLTHEN CONTROL FUNEXP VALMEM
+SUBMISSION_REQUIRE_METADATA ?= 0
+
 # COLORZ <3
 YELLOW = \033[33m
 GREEN = \033[32m
 RESET = \033[0m
 
 
-.PHONY: tidy tidy-fix tidy-all format format-check check fix test clean $(TEST_RUNS)
+.PHONY: tidy tidy-fix tidy-all format format-check check fix test clean zip zip-end $(TEST_RUNS)
 
 
 # =============
@@ -124,7 +133,6 @@ $(CMOCKA_LIB): $(CMOCKA_OBJ)
 test: $(TEST_RUNS)
 	@printf "$(GREEN)All tests passed.$(RESET)\n"
 
-
 # Build one executable for each test source file.
 #
 # Example:
@@ -174,3 +182,62 @@ valgrind: $(TEST_RUNS)
 
 clean:
 	@rm -rf $(TEST_BIN_DIR)
+
+# =============
+# SUBMISSION ZIP
+# =============
+
+zip:
+# this is pure hell
+	@set -eu; \
+	stage_path="$$(realpath -m "$(SUBMISSION_STAGE)")"; \
+	case "$$stage_path" in "$$(pwd -P)"/build/*) ;; *) printf '%s\n' 'Submission staging must stay under this project/build/.' >&2; exit 1;; esac; \
+	rm -rf "$(SUBMISSION_STAGE)"; \
+	mkdir -p "$(SUBMISSION_STAGE)" "$(dir $(SUBMISSION_ZIP))"; \
+	cp $(SUBMISSION_SOURCES) "$(SUBMISSION_STAGE)/"; \
+	sed -i 's#"include/#"#g' "$(SUBMISSION_STAGE)"/*.[ch]; \
+	mkdir -p "$(SUBMISSION_STAGE)/tests/cmocka"; \
+	cp $(TEST_DIR)/test_*.c $(TEST_DIR)/ast_builder.h $(TEST_DIR)/*.ifj26 "$(SUBMISSION_STAGE)/tests/"; \
+	cp $(CMOCKA_DIR)/*.c $(CMOCKA_DIR)/*.h "$(SUBMISSION_STAGE)/tests/cmocka/"; \
+	sed -i 's#"../include/#"../#g; s#src/tests/#tests/#g' \
+		"$(SUBMISSION_STAGE)"/tests/test_*.c "$(SUBMISSION_STAGE)"/tests/ast_builder.h; \
+	cp Makefile.submission "$(SUBMISSION_STAGE)/Makefile"; \
+	for source in main.c lexer.c syntax_anal.c semantic_anal.c ast.c irgen.c tac.c codegen.c; do \
+		if [ ! -s "$(SUBMISSION_STAGE)/$$source" ]; then \
+			printf 'Missing required source: %s\n' "$$source" >&2; exit 1; \
+		fi; \
+	done; \
+	if [ -s rozdeleni.txt ]; then \
+		awk '{ sub(/\r$$/, ""); print }' rozdeleni.txt > "$(SUBMISSION_STAGE)/rozdeleni"; \
+		if [ "$(SUBMISSION_REQUIRE_METADATA)" = 1 ]; then \
+			awk -F: 'NF != 3 || $$1 !~ /^[0-9]+$$/ || $$2 !~ /^[A-Za-z][A-Za-z0-9_]*$$/ || $$3 !~ /^[0-9]+$$/ { bad = 1 } { total += $$3; count++ } END { if (bad || count == 0 || total != 100) exit 1 }' \
+				"$(SUBMISSION_STAGE)/rozdeleni" || { printf '%s\n' 'rozdeleni must contain VUT_ID:FIT_LOGIN:PERCENT lines totalling 100.' >&2; exit 1; }; \
+		fi; \
+	else \
+		if [ "$(SUBMISSION_REQUIRE_METADATA)" = 1 ]; then \
+			printf '%s\n' 'Fill rozdeleni.txt before final submission.' >&2; exit 1; \
+		fi; \
+		: > "$(SUBMISSION_STAGE)/rozdeleni"; \
+		printf '%s\n' 'Warning: rozdeleni is empty; archive is a draft.'; \
+	fi; \
+	printf '%s\n' $(SUBMISSION_EXTENSIONS) > "$(SUBMISSION_STAGE)/rozsireni"; \
+	if [ -n "$(SUBMISSION_DOC)" ]; then \
+		cp "$(SUBMISSION_DOC)" "$(SUBMISSION_STAGE)/dokumentace.pdf"; \
+	else \
+		if [ "$(SUBMISSION_REQUIRE_METADATA)" = 1 ]; then \
+			printf '%s\n' 'Add docs/dokumentace.pdf before final submission.' >&2; exit 1; \
+		fi; \
+		printf '%s\n' 'Warning: documentation is missing; archive is a draft.'; \
+	fi; \
+	$(MAKE) --no-print-directory -C "$(SUBMISSION_STAGE)"; \
+	printf 'import ifj26.*\n@main def main(): Unit = ()\n' | "$(SUBMISSION_STAGE)/compiler" > /dev/null; \
+	rm -f "$(SUBMISSION_STAGE)/compiler"; \
+	rm -f "$(SUBMISSION_ZIP_ABS)"; \
+	cd "$(SUBMISSION_STAGE)"; \
+	zip -q -r "$(SUBMISSION_ZIP_ABS)" ./*; \
+	printf 'Created %s\n' "$(SUBMISSION_ZIP)"
+
+zip-end:
+	@test -s rozdeleni.txt || { printf '%s\n' 'Fill rozdeleni.txt before final submission.' >&2; exit 1; }
+	@test -s "$(SUBMISSION_DOC)" || { printf '%s\n' 'Add docs/dokumentace.pdf before final submission.' >&2; exit 1; }
+	@$(MAKE) --no-print-directory SUBMISSION_REQUIRE_METADATA=1 zip
