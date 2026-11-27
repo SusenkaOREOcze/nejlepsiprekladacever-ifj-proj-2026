@@ -75,7 +75,7 @@ struct Codegen {
 	tac_operand_t *param_stack; //!< Parameter stack for proper PUSH/POP order determination.
 	size_t pstack_size;
 	size_t pstack_count;
-	bool promote_arg;
+    bool promote_arg; //!< If true, the argument must undergo numeric promotion.
 	symt_data_type_t current_return_type;
 };
 
@@ -196,6 +196,27 @@ cdg_result_t cdg_print_defvar(codegen_t *gen, const tac_operand_t *op, bool is_i
 cdg_result_t cdg_print_label(codegen_t *gen, const tac_instruction_t *instr, bool is_func, int flags);
 
 /**
+   @brief Generate type conversion (promotion) code for binary instructions with source operands of type
+   INT-DOUBLE/DOUBLE-IN.
+
+   DOUBLE always has priority over INTEGER: the instruction `ADD GF\\@$0 int\\@4 float\\@0x1p0` will have the
+   first source operand converted to a float equivalent `float\\@0x1p+2`.
+   @param gen The code generator to print with.
+   @param tac A binary instruction whose operands to promote.
+*/
+cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t *tac);
+
+/**
+   @brief Print a numeric operand's equivalent cast variable.
+
+   @param gen The code generator.
+   @param tac The instruction whose source operand cast variable to print.
+   @param second Specifies which source operand to cast. If true, use src2, else use src1.
+   @returns CDG_OK on success, or the return code of @ref cdg_print_operand.
+*/
+cdg_result_t cdg_print_numeric(codegen_t *gen, const tac_instruction_t *tac, bool second);
+
+/**
    @brief Print an instruction directly from a string.
 
    @param gen The codegen.
@@ -215,7 +236,7 @@ inline void cdg_print_instr_direct(const codegen_t *gen, const char *instr, int 
 /**
    @brief Perform code generation from a code list.
 
-   @param gen The codegen... it sees me. I can feel it looking over my shoulder ri
+   @param gen The codegen... it sees me.
    @param code The code list to generate from.
    @returns CDG_OK on successfull pass through the entire code list, CDG_BAD_ARG if the arguments are wrong,
    CDG_BAD_ALLOC on allocation failure or something else entirely.

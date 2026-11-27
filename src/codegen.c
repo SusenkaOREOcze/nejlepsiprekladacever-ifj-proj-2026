@@ -151,15 +151,6 @@ static cdg_result_t cdg_wrap_integer(codegen_t *gen, const tac_operand_t *dst) {
 	return ferror(out) ? CDG_INTERNAL_FAILURE : CDG_OK;
 }
 
-/**
-   @brief Generate type conversion (promotion) code for binary instructions with source operands of type
-   INT-DOUBLE/DOUBLE-IN.
-
-   DOUBLE always has priority over INTEGER: the instruction `ADD GF\\@$0 int\\@4 float\\@0x1p0` will have the
-   first source operand converted to a float equivalent `float\\@0x1p+2`.
-   @param gen The code generator to print with.
-   @param tac A binary instruction whose operands to promote.
-*/
 cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t *tac) {
 	if (tac->src1.type == tac->src2.type)
 		return CDG_OK;
@@ -174,14 +165,6 @@ cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t *tac) {
 	return CDG_OK;
 }
 
-/**
-   @brief Print a numeric operand's equivalent cast variable.
-
-   @param gen The code generator.
-   @param tac The instruction whose source operand cast variable to print.
-   @param second Specifies which source operand to cast. If true, use src2, else use src1.
-   @returns CDG_OK on success, or the return code of @ref cdg_print_operand.
-*/
 cdg_result_t cdg_print_numeric(codegen_t *gen, const tac_instruction_t *tac, bool second) {
 	const tac_operand_t *operand = second ? &tac->src2 : &tac->src1;
 	if (operand->type == SYMT_TYPE_INTEGER &&

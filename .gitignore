@@ -62,3 +62,4 @@ dkms.conf
 .vscode/
 build/
 ifjcode26/
+.gdb_history
