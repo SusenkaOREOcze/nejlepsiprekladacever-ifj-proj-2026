@@ -81,7 +81,7 @@ symt_stat_t symt_init(symt_t **const sym_table) {
 	new_table->scope_top = NULL;
 	new_table->standby_top = NULL;
 	new_table->scope_depth = 0;
-	new_table->uid_accum = 0;
+	new_table->uid_accum = 1;
 
 	/* Add the global scope onto the main stack */
 	symt_scope_t *new_global_scope = NULL;
@@ -198,15 +198,26 @@ bool symt_exists_in_current_scope(const symt_t *sym_table, const char *ident) {
 symt_stat_t symt_insert(symt_t *sym_table, const char *ident, symt_symbol_t *symbol) {
 	if (sym_table == NULL || ident == NULL || ident[0] == '\0' || symbol == NULL)
 		return SYMTSTAT_BAD_ARG;
-
 	if (sym_table->scope_top == NULL)
 		return SYMTSTAT_NO_SCOPE;
 
-	/* Insert the symbol into the scope */
 	symt_scope_t *const cur_scope = sym_table->scope_top;
-	symbol->uid = sym_table->uid_accum;
-	sym_table->uid_accum++;
+	symt_symbol_t existing_symbol;
+	bool is_update = false;
 
+	/* Check for immutable symbol reinsertion (this is not allowed) */
+	if ((is_update = HTBL_RETRIEVE(cur_scope->scope, ident, existing_symbol))) {
+		if (!existing_symbol.mutable)
+			return SYMTSTAT_BAD_ARG;
+	}
+
+	/* Only update UIDs for new symbols */
+	if (!is_update) {
+		symbol->uid = sym_table->uid_accum;
+		sym_table->uid_accum++;
+	}
+
+	/* Insert the symbol into the scope */
 	if (HTBL_INSERT(cur_scope->scope, ident, symbol) != HTBLSTAT_OK)
 		return SYMTSTAT_BAD_ALLOC;
 

@@ -3,7 +3,7 @@ CC				:= gcc
 CLANG_TIDY		:= clang-tidy
 CLANG_FORMAT	:= clang-format
 
-CFLAGS			:= -std=gnu23 -Wall -Wextra -g #-fsanitize=address
+CFLAGS			:= -std=gnu23 -Wall -Wextra -g -fsanitize=address
 CPPFLAGS		:= -Isrc/include #preprocessor flags, not C++, thoose are CXXFLAGS :/
 
 # Directories for tests and CMocka.
@@ -27,7 +27,7 @@ TEST_SRC	:= $(sort $(wildcard $(TEST_DIR)/test_*.c))
 #   src/tests/test_lexer.c -> lexer
 TEST_NAMES	:= $(patsubst $(TEST_DIR)/test_%.c,%,$(TEST_SRC))
 
-TEST_CPPFLAGS := $(CPPFLAGS) -I$(CMOCKA_DIR) -fsanitize=address
+TEST_CPPFLAGS := $(CPPFLAGS) -I$(CMOCKA_DIR)
 
 # CMocka ._.
 # it is uunder APACHE 2.0 license, so we can use it in our project - more in README.md

@@ -170,7 +170,7 @@ static void symt_init_test(void **state) {
 	assert_int_equal(symt_init(&table), SYMTSTAT_OK);
 
 	assert_uint_equal(table->scope_depth, 0);
-	assert_uint_equal(table->uid_accum, 0);
+	assert_uint_equal(table->uid_accum, 1);
 	assert_non_null(table->scope_top);
 	assert_non_null(table->standby_top);
 
@@ -220,7 +220,7 @@ static void symt_inc_scope_depth_returns(void **state) {
 	    .scope_top = NULL,
 	    .standby_top = NULL,
 	    .scope_depth = 0,
-	    .uid_accum = 0,
+	    .uid_accum = 1,
 	};
 
 	assert_int_equal(symt_inc_scope_depth(NULL), SYMTSTAT_BAD_ARG);
@@ -237,7 +237,7 @@ static void symt_inc_scope_depth_single(void **state) {
 
 	assert_int_equal(symt_inc_scope_depth(table), SYMTSTAT_OK);
 	assert_uint_equal(table->scope_depth, 1);
-	assert_uint_equal(table->uid_accum, 0);
+	assert_uint_equal(table->uid_accum, 1);
 	assert_ptr_equal(table->scope_top, old_standby_top);
 	assert_ptr_equal(table->scope_top->prev, old_scope_top);
 	assert_ptr_not_equal(table->standby_top, old_standby_top);
@@ -293,7 +293,7 @@ static void symt_dec_scope_depth_returns(void **state) {
 	    .scope_depth = 0,
 	    .scope_top = NULL,
 	    .standby_top = NULL,
-	    .uid_accum = 0,
+	    .uid_accum = 1,
 	};
 
 	assert_int_equal(symt_dec_scope_depth(NULL), SYMTSTAT_BAD_ARG);
@@ -312,7 +312,7 @@ static void symt_dec_scope_depth_single(void **state) {
 
 	assert_int_equal(symt_dec_scope_depth(table), SYMTSTAT_OK);
 	assert_uint_equal(table->scope_depth, 0);
-	assert_uint_equal(table->uid_accum, 0);
+	assert_uint_equal(table->uid_accum, 1);
 	assert_ptr_equal(table->scope_top, old_second_scope_top);
 	assert_null(table->scope_top->prev);
 	assert_ptr_equal(table->standby_top, old_scope_top);
@@ -361,17 +361,17 @@ static void symt_insert_single(void **state) {
 	symt_symbol_t sym = {
 	    .mutable = true,
 	    .data_type = SYMT_TYPE_INTEGER,
-	    .uid = -1,
+	    .uid = 0,
 	};
 
 	assert_int_equal(symt_insert(table, "clutch it like a cornerstone", &sym), SYMTSTAT_OK);
-	assert_uint_equal(table->uid_accum, 1);
+	assert_uint_equal(table->uid_accum, 2);
 
 	symt_symbol_t out_sym;
 	assert_true(HTBL_RETRIEVE(table->scope_top->scope, "clutch it like a cornerstone", out_sym));
 	assert_int_equal(sym.mutable, out_sym.mutable);
 	assert_int_equal(sym.data_type, out_sym.data_type);
-	assert_uint_equal(out_sym.uid, 0);
+	assert_uint_equal(out_sym.uid, 1);
 
 	symt_free(table);
 }
@@ -577,7 +577,7 @@ int main(void) {
 	valid_table = malloc(sizeof(*valid_table));
 	valid_table->scope_top = NULL;
 	valid_table->standby_top = NULL;
-	valid_table->uid_accum = 0;
+	valid_table->uid_accum = 1;
 	valid_table->scope_depth = 0;
 
 	struct CMUnitTest helper_func_tests[] = {

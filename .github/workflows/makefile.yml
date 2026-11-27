@@ -15,7 +15,7 @@ jobs:
       - name: Install clang tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 clang-format-18 clang-tidy-18 make
+          sudo apt-get install -y clang-19 clang-format-19 clang-tidy-19 make
 
       - name: Run make check
-        run: make check CLANG_FORMAT=clang-format-18 CLANG_TIDY=clang-tidy-18
+        run: make check CLANG_FORMAT=clang-format-19 CLANG_TIDY=clang-tidy-19

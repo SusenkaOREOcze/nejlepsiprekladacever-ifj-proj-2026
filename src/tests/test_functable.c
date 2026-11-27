@@ -16,6 +16,7 @@
 
 #include "cmocka/cmocka.h"
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -35,11 +36,16 @@
 
 #define ASSERT_PENDING_SYMBOL_EMPTY(tbl)                                                                     \
 	do {                                                                                                     \
-		assert_null((tbl)->pending_symbol.def_param_type_array);                                             \
-		assert_null((tbl)->pending_symbol.call_param_type_array);                                            \
+		assert_int_equal((tbl)->pending_symbol.def_array_offset, (tbl)->def_arr_im_count);                   \
+		assert_int_equal((tbl)->pending_symbol.call_array_offset, (tbl)->call_arr_im_count);                 \
 		assert_int_equal((tbl)->pending_symbol.param_count, -1);                                             \
 		assert_int_equal((tbl)->pending_symbol.ret_type, SYMT_TYPE_UNDEFINED);                               \
 	} while (0)
+
+#define ASSERT_TYPE_OFFSET_INVALID(ofst) assert_int_in_range((ofst), INT_MIN, -1)
+#define ASSERT_TYPE_OFFSET_VALID(ofst) assert_int_not_in_range((ofst), INT_MIN, -1)
+#define FUNCT_DEF_TYPE_OFFSET(tbl, sym, offset) (tbl)->def_type_array[(sym).def_array_offset + offset]
+#define FUNCT_CALL_TYPE_OFFSET(tbl, sym, offset) (tbl)->call_type_array[(sym).call_array_offset + offset]
 
 /*================
   funct_init tests
@@ -66,7 +72,12 @@ static void funct_init_single(void **state) {
 	assert_uint_equal(new_table->def_arr_size, 1024); /* likewise here */
 
 	assert_false(new_table->state_insert);
-	ASSERT_PENDING_SYMBOL_EMPTY(new_table);
+	assert_int_equal(new_table->pending_symbol.call_array_offset, -1);
+	assert_int_equal(new_table->pending_symbol.def_array_offset, -1);
+	assert_int_equal(new_table->pending_symbol.param_count, -1);
+	assert_int_equal(new_table->pending_symbol.ret_type, SYMT_TYPE_UNDEFINED);
+	assert_false(new_table->pending_symbol.has_call_sign);
+	assert_false(new_table->pending_symbol.has_def_sign);
 
 	FREE_TABLE_NOT_FUNCTION(new_table);
 }
@@ -237,15 +248,15 @@ static void funct_insert_add_param_call_single(void **state) {
 
 	/* First parameter */
 	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
-	assert_null(table->pending_symbol.def_param_type_array);
-	assert_non_null(table->pending_symbol.call_param_type_array);
+	assert_false(funct_sym_has_def_sign(&table->pending_symbol));
+	assert_true(funct_sym_has_call_sign(&table->pending_symbol));
 	assert_uint_equal(table->call_arr_im_count, 1);
 
 	assert_int_equal(table->pending_symbol.param_count, 1);
 	assert_int_equal(table->pending_symbol.ret_type, SYMT_TYPE_UNDEFINED);
-	assert_int_equal(
-	    (symt_data_type_t)table->pending_symbol.call_param_type_array[table->pending_symbol.param_count - 1],
-	    SYMT_TYPE_BOOLEAN);
+	assert_int_equal((symt_data_type_t)table->call_type_array[table->pending_symbol.call_array_offset +
+	                                                          table->pending_symbol.param_count - 1],
+	                 SYMT_TYPE_BOOLEAN);
 
 	funct_free(table);
 }
@@ -265,18 +276,18 @@ static void funct_insert_add_param_call_multi(void **state) {
 		assert_uint_equal(table->call_arr_im_count, i + 1);
 	}
 
-	assert_null(table->pending_symbol.def_param_type_array);
-	assert_non_null(table->pending_symbol.call_param_type_array);
+	assert_false(funct_sym_has_def_sign(&table->pending_symbol));
+	assert_true(funct_sym_has_call_sign(&table->pending_symbol));
 	assert_int_equal(table->pending_symbol.param_count, (int)param_count);
 
 	for (unsigned i = 0; i < param_count; i++)
-		assert_int_equal(table->pending_symbol.call_param_type_array[i], param_types[i]);
+		assert_int_equal(table->call_type_array[table->pending_symbol.call_array_offset + i], param_types[i]);
 
 	/* Attempt to add invalid param (shouldn't change anything) */
 	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_UNDEFINED), SYMTSTAT_BAD_ARG);
 	assert_int_equal(table->pending_symbol.param_count, (int)param_count);
 	for (unsigned i = 0; i < param_count; i++)
-		assert_int_equal(table->pending_symbol.call_param_type_array[i], param_types[i]);
+		assert_int_equal(table->call_type_array[table->pending_symbol.call_array_offset + i], param_types[i]);
 
 	funct_free(table);
 }
@@ -289,13 +300,14 @@ static void funct_insert_add_param_def_single(void **state) {
 
 	/* First parameter */
 	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
-	assert_null(table->pending_symbol.call_param_type_array); /* Mustn't change */
-	assert_non_null(table->pending_symbol.def_param_type_array);
+	assert_true(funct_sym_has_def_sign(&table->pending_symbol));
+	assert_false(funct_sym_has_call_sign(&table->pending_symbol));
 	assert_uint_equal(table->def_arr_im_count, 1);
 
 	assert_int_equal(table->pending_symbol.param_count, 1);
 	assert_int_equal(table->pending_symbol.ret_type, SYMT_TYPE_UNDEFINED); /* Mustn't change */
-	assert_int_equal(table->pending_symbol.def_param_type_array[table->pending_symbol.param_count - 1],
+	assert_int_equal((symt_data_type_t)table->def_type_array[table->pending_symbol.def_array_offset +
+	                                                         table->pending_symbol.param_count - 1],
 	                 SYMT_TYPE_BOOLEAN);
 
 	funct_free(table);
@@ -316,19 +328,19 @@ static void funct_insert_add_param_def_multi(void **state) {
 		assert_uint_equal(table->def_arr_im_count, i + 1);
 	}
 
-	assert_null(table->pending_symbol.call_param_type_array);
-	assert_non_null(table->pending_symbol.def_param_type_array);
+	assert_true(funct_sym_has_def_sign(&table->pending_symbol));
+	assert_false(funct_sym_has_call_sign(&table->pending_symbol));
 	assert_int_equal(table->pending_symbol.param_count, (int)param_count);
 
 	/* Test if param types match what we added */
 	for (unsigned i = 0; i < param_count; i++)
-		assert_int_equal(table->pending_symbol.def_param_type_array[i], param_types[i]);
+		assert_int_equal(table->def_type_array[table->pending_symbol.def_array_offset + i], param_types[i]);
 
 	/* Attempt to add invalid param (shouldn't change anything) */
 	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_UNDEFINED), SYMTSTAT_BAD_ARG);
 	assert_int_equal(table->pending_symbol.param_count, (int)param_count); /* Param count didn't change */
 	for (unsigned i = 0; i < param_count; i++)
-		assert_int_equal(table->pending_symbol.def_param_type_array[i], param_types[i]);
+		assert_int_equal(table->def_type_array[table->pending_symbol.def_array_offset + i], param_types[i]);
 
 	funct_free(table);
 }
@@ -377,8 +389,8 @@ static void funct_insert_end_undefined_symbol(void **state) {
 
 	/*
 	  Adding an undefined symbol is basically equivalent to adding the following IFJ26 function:
-	    + definition: def 33MHz(): UNDEF (not a valid IFJ26 type); no params (def_array == NULL,
-	  param_count == 0),
+	    + definition: def 33MHz(): "UNDEF" (not a valid IFJ26 type); no params (param_count == 0,
+	    has_def_sign == true),
 	    + call: 33MHz(); return type may be SYMT_TYPE_UNDEFINED, because it's a call.
 	  We have to check both of these cases in separate tables, because technically, adding two symbols
 	  is an unknown operation right now (not tested yet).
@@ -394,8 +406,8 @@ static void funct_insert_end_undefined_symbol(void **state) {
 
 	funct_symbol_t func_symbol = {};
 	HTBL_RETRIEVE(table_call->scope, "33MHz", func_symbol);
-	assert_null(func_symbol.call_param_type_array);
-	assert_null(func_symbol.def_param_type_array);
+	assert_true(funct_sym_has_call_sign(&func_symbol)); /* has a call sign, it's just empty */
+	assert_false(funct_sym_has_def_sign(&func_symbol));
 	assert_int_equal(func_symbol.param_count, 0);
 	assert_int_equal(func_symbol.ret_type, SYMT_TYPE_UNDEFINED);
 
@@ -428,11 +440,11 @@ static void funct_insert_end_single_function_call(void **state) {
 	/* symbol check */
 	funct_symbol_t symbol = {};
 	HTBL_RETRIEVE(table->scope, "function", symbol);
-	assert_null(symbol.def_param_type_array);
-	assert_non_null(symbol.call_param_type_array);
+	assert_false(funct_sym_has_def_sign(&symbol));
+	assert_true(funct_sym_has_call_sign(&symbol));
 	assert_int_equal(symbol.param_count, 1);
 	assert_int_equal(symbol.ret_type, SYMT_TYPE_UNIT);
-	assert_int_equal(symbol.call_param_type_array[symbol.param_count - 1], SYMT_TYPE_STRING);
+	assert_int_equal(FUNCT_CALL_TYPE_OFFSET(table, symbol, symbol.param_count - 1), SYMT_TYPE_STRING);
 
 	funct_free(table);
 }
@@ -456,11 +468,11 @@ static void funct_insert_end_single_function_def(void **state) {
 	/* symbol check */
 	funct_symbol_t symbol = {};
 	HTBL_RETRIEVE(table->scope, "function", symbol);
-	assert_null(symbol.call_param_type_array);
-	assert_non_null(symbol.def_param_type_array);
+	assert_false(funct_sym_has_call_sign(&symbol));
+	assert_true(funct_sym_has_def_sign(&symbol));
 	assert_int_equal(symbol.param_count, 1);
 	assert_int_equal(symbol.ret_type, SYMT_TYPE_UNIT);
-	assert_int_equal(symbol.def_param_type_array[symbol.param_count - 1], SYMT_TYPE_DOUBLE);
+	assert_int_equal(FUNCT_DEF_TYPE_OFFSET(table, symbol, symbol.param_count - 1), SYMT_TYPE_DOUBLE);
 
 	funct_free(table);
 }
@@ -473,8 +485,8 @@ static void funct_find_symbol_returns(void **state) {
 	funct_t *table;
 	funct_init(&table);
 	funct_symbol_t sym_out = {
-	    .call_param_type_array = NULL,
-	    .def_param_type_array = NULL,
+	    .call_array_offset = -1,
+	    .def_array_offset = -1,
 	    .param_count = -1,
 	    .ret_type = SYMT_TYPE_UNDEFINED,
 	};
@@ -491,16 +503,23 @@ static void funct_find_symbol_empty_table(void **state) {
 	funct_t *table;
 	funct_init(&table);
 	funct_symbol_t sym_out = {
-	    .call_param_type_array = NULL,
-	    .def_param_type_array = NULL,
+	    .call_array_offset = -1,
+	    .def_array_offset = -1,
 	    .param_count = -1,
 	    .ret_type = SYMT_TYPE_UNDEFINED,
 	};
 
 	assert_int_equal(funct_find_symbol(table, "nonexistent", &sym_out), SYMTSTAT_NO_SYMBOL);
 	assert_int_equal(sym_out.param_count, -1);
+	assert_int_equal(sym_out.call_array_offset, -1);
+	assert_int_equal(sym_out.def_array_offset, -1);
+	assert_int_equal(sym_out.ret_type, SYMT_TYPE_UNDEFINED);
+
 	assert_int_equal(funct_find_symbol(table, "", &sym_out), SYMTSTAT_NO_SYMBOL);
 	assert_int_equal(sym_out.param_count, -1);
+	assert_int_equal(sym_out.call_array_offset, -1);
+	assert_int_equal(sym_out.def_array_offset, -1);
+	assert_int_equal(sym_out.ret_type, SYMT_TYPE_UNDEFINED);
 
 	funct_free(table);
 }
@@ -514,20 +533,25 @@ static void funct_nth_param_type_returns(void **state) {
 	int8_t call_types[] = {(int8_t)SYMT_TYPE_INTEGER};
 	funct_symbol_t *sym_in = malloc(sizeof(funct_symbol_t));
 	sym_in->param_count = 1;
-	sym_in->call_param_type_array = call_types;
+	sym_in->call_array_offset = 0;
 	sym_in->ret_type = SYMT_TYPE_UNIT;
+	funct_t table = {
+	    .call_type_array = call_types,
+	    .call_arr_size = 1,
+	    .def_type_array = NULL,
+	};
 
 	symt_data_type_t type_out = SYMT_TYPE_UNDEFINED;
 
-	assert_int_equal(funct_nth_param_type(NULL, 1, &type_out), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, NULL, 1, &type_out), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
-	assert_int_equal(funct_nth_param_type(sym_in, -32809732, &type_out), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, -32809732, &type_out), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
-	assert_int_equal(funct_nth_param_type(sym_in, 0, NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 0, NULL), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
 
 	/* Invalid index in a function symbol with 1 parameter */
-	assert_int_equal(funct_nth_param_type(sym_in, 1, &type_out), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 1, &type_out), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
 
 	free(sym_in);
@@ -540,12 +564,16 @@ static void funct_nth_param_type_parameterless_symbol(void **state) {
 	sym_in->param_count = 0;
 	sym_in->ret_type = SYMT_TYPE_UNIT;
 	symt_data_type_t type_out = SYMT_TYPE_UNDEFINED;
+	funct_t table = {
+	    .def_type_array = NULL,
+	    .call_type_array = NULL,
+	};
 
-	assert_int_equal(funct_nth_param_type(sym_in, 0, &type_out), SYMTSTAT_FUNC_NO_PARAMS);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 0, &type_out), SYMTSTAT_FUNC_NO_PARAMS);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
-	assert_int_equal(funct_nth_param_type(sym_in, 2, &type_out), SYMTSTAT_FUNC_NO_PARAMS);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 2, &type_out), SYMTSTAT_FUNC_NO_PARAMS);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
-	assert_int_equal(funct_nth_param_type(sym_in, -1, &type_out), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, -1, &type_out), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_UNDEFINED);
 
 	free(sym_in);
@@ -558,17 +586,23 @@ static void funct_nth_param_type_def_precedence(void **state) {
 	int8_t def_types[] = {(int8_t)SYMT_TYPE_DOUBLE, (int8_t)SYMT_TYPE_INTEGER};
 	funct_symbol_t *sym_in = malloc(sizeof(funct_symbol_t));
 	sym_in->param_count = 2;
-	sym_in->call_param_type_array = call_types;
-	sym_in->def_param_type_array = def_types;
+	sym_in->call_array_offset = 0;
+	sym_in->def_array_offset = 0;
 	sym_in->ret_type = SYMT_TYPE_UNIT;
+	funct_t table = {
+	    .call_type_array = call_types,
+	    .call_arr_size = 1,
+	    .def_type_array = def_types,
+	    .def_arr_size = 2,
+	};
 
 	symt_data_type_t type_out = SYMT_TYPE_UNDEFINED;
 
-	assert_int_equal(funct_nth_param_type(sym_in, 0, &type_out), SYMTSTAT_OK);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 0, &type_out), SYMTSTAT_OK);
 	assert_int_equal(type_out, SYMT_TYPE_DOUBLE);
-	assert_int_equal(funct_nth_param_type(sym_in, 1, &type_out), SYMTSTAT_OK);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 1, &type_out), SYMTSTAT_OK);
 	assert_int_equal(type_out, SYMT_TYPE_INTEGER);
-	assert_int_equal(funct_nth_param_type(sym_in, 2, &type_out), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_nth_param_type(&table, sym_in, 2, &type_out), SYMTSTAT_BAD_ARG);
 	assert_int_equal(type_out, SYMT_TYPE_INTEGER);
 
 	free(sym_in);
@@ -581,93 +615,133 @@ static void funct_compare_sym_signatures_returns(void **state) {
 	(void)state;
 
 	funct_symbol_t sym1 = {
-	    .call_param_type_array = NULL,
-	    .def_param_type_array = NULL,
+	    .call_array_offset = -1,
+	    .def_array_offset = -1,
 	    .param_count = -1,
 	    .ret_type = SYMT_TYPE_UNDEFINED,
+	    .has_def_sign = false,
+	    .has_call_sign = false,
 	};
 	funct_symbol_t sym2 = {
-	    .call_param_type_array = NULL,
-	    .def_param_type_array = NULL,
+	    .call_array_offset = -1,
+	    .def_array_offset = -1,
 	    .param_count = -1,
 	    .ret_type = SYMT_TYPE_UNDEFINED,
+	    .has_def_sign = false,
+	    .has_call_sign = false,
+	};
+	funct_t table = {
+	    .call_type_array = NULL,
+	    .def_type_array = NULL,
 	};
 
-	assert_int_equal(funct_compare_sym_signatures(NULL, &sym2), SYMTSTAT_BAD_ARG);
-	assert_int_equal(funct_compare_sym_signatures(&sym1, NULL), SYMTSTAT_BAD_ARG);
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_compare_sym_signatures(&table, NULL, &sym2), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, NULL), SYMTSTAT_BAD_ARG);
+	/* both have no signatures, which is valid */
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_OK);
 
-	sym1.call_param_type_array = (int8_t *)0xDEADBEEF; /* this is insane */
-	sym1.def_param_type_array = (int8_t *)0xDEADBEEF;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_BAD_ARG);
-	sym2.call_param_type_array = (int8_t *)0xDEADBEEF; /* really edging the segfault with this one */
-	sym2.def_param_type_array = (int8_t *)0xDEADBEEF;
+	sym1.call_array_offset = 1; /* this is insane */
+	sym1.def_array_offset = 1;
+	sym1.param_count = 1;
+	sym1.has_call_sign = true;
+	sym1.has_def_sign = true;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_BAD_ARG);
+	sym2.call_array_offset = 1;
+	sym2.def_array_offset = 1;
+	sym2.has_call_sign = true;
+	sym2.has_def_sign = true;
 
 	sym1.param_count = 3; /* if just one of these is -1, the function should fail */
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_BAD_ARG);
 	sym1.param_count = -1;
 	sym2.param_count = 42;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_BAD_ARG);
 }
 
 static void funct_compare_sym_signatures_by_call_sign(void **state) {
 	(void)state;
-	int8_t signature1[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN};
-	int8_t signature2[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_DOUBLE};
-
+	int8_t signatures[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN, SYMT_TYPE_DOUBLE};
+	//			^signature 0				^signature 2
 	/* Ensure that the base_sym (left side) has only a call signature */
 	funct_symbol_t sym1 = {
-	    .def_param_type_array = NULL,
-	    .call_param_type_array = signature1,
+	    .def_array_offset = -1,
+	    .has_def_sign = false,
+	    .call_array_offset = 0,
+	    .has_call_sign = true,
 	    .param_count = 2,
 	    .ret_type = SYMT_TYPE_UNDEFINED, /* can be anything, this function doesn't care */
 	};
 	funct_symbol_t sym2 = {
-	    .call_param_type_array = signature1,
-	    .def_param_type_array = NULL,
+	    .def_array_offset = -1,
+	    .has_def_sign = false,
+	    .call_array_offset = 0,
+	    .has_call_sign = true,
 	    .param_count = 2,
 	    .ret_type = SYMT_TYPE_BOOLEAN,
 	};
 
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_OK);
-	sym2.call_param_type_array = signature2;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_FUNC_DIFF_CALL_SIGN);
+	funct_t table = {
+	    .call_type_array = signatures,
+	    .def_type_array = signatures,
+	    .call_arr_size = 4,
+	    .def_arr_size = 4,
+	};
 
-	sym2.call_param_type_array = NULL;
-	sym2.def_param_type_array = signature1;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_OK);
-	sym2.def_param_type_array = signature2;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_FUNC_DIFF_CALL_SIGN);
+	/* Compare sym1 call types with sym2 call types */
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_OK);
+	sym2.call_array_offset = 2;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_FUNC_DIFF_CALL_SIGN);
+
+	/* Compare sym1 call types with sym2 def types */
+	sym2.call_array_offset = -1; /* technically should have has_call_sign == false */
+	sym2.def_array_offset = 0;
+	sym2.has_def_sign = true;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_OK);
+	sym2.def_array_offset = 2;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_FUNC_DIFF_CALL_SIGN);
 }
 
 static void funct_compare_sym_signatures_by_def_sign(void **state) {
 	(void)state;
-	int8_t signature1[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN};
-	int8_t signature2[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_DOUBLE};
-
+	int8_t signatures[] = {SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN, SYMT_TYPE_BOOLEAN, SYMT_TYPE_DOUBLE};
+	//			^signature 0				^signature 2
 	/* Ensure that the base_sym (left side) has only a def signature */
 	funct_symbol_t sym1 = {
-	    .call_param_type_array = NULL,
-	    .def_param_type_array = signature1,
+	    .def_array_offset = 0,
+	    .has_def_sign = true,
+	    .call_array_offset = -1,
+	    .has_call_sign = false,
 	    .param_count = 2,
-	    .ret_type = SYMT_TYPE_STRING,
+	    .ret_type = SYMT_TYPE_UNDEFINED, /* can be anything, this function doesn't care */
 	};
 	funct_symbol_t sym2 = {
-	    .call_param_type_array = signature1,
-	    .def_param_type_array = NULL,
+	    .def_array_offset = -1,
+	    .has_def_sign = false,
+	    .call_array_offset = 0,
+	    .has_call_sign = true,
 	    .param_count = 2,
 	    .ret_type = SYMT_TYPE_BOOLEAN,
 	};
 
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_OK);
-	sym2.call_param_type_array = signature2;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_FUNC_DIFF_DEF_SIGN);
+	funct_t table = {
+	    .call_type_array = signatures,
+	    .def_type_array = signatures,
+	    .call_arr_size = 4,
+	    .def_arr_size = 4,
+	};
 
-	sym2.call_param_type_array = NULL;
-	sym2.def_param_type_array = signature1;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_OK);
-	sym2.def_param_type_array = signature2;
-	assert_int_equal(funct_compare_sym_signatures(&sym1, &sym2), SYMTSTAT_FUNC_DIFF_DEF_SIGN);
+	/* Compare sym1 def types with sym2 call types */
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_OK);
+	sym2.call_array_offset = 2;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_FUNC_DIFF_DEF_SIGN);
+
+	/* Compare sym1 def types with sym2 def types */
+	sym2.call_array_offset = -1;
+	sym2.has_def_sign = true;
+	sym2.def_array_offset = 0;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_OK);
+	sym2.def_array_offset = 2;
+	assert_int_equal(funct_compare_sym_signatures(&table, &sym1, &sym2), SYMTSTAT_FUNC_DIFF_DEF_SIGN);
 }
 
 /*==============================
@@ -676,39 +750,59 @@ static void funct_compare_sym_signatures_by_def_sign(void **state) {
 static void funct_copy_update_symbol_returns(void **state) {
 	(void)state;
 
-	assert_int_equal(funct_copy_update_symbol(NULL, (funct_symbol_t *)0xDDDD), SYMTSTAT_BAD_ARG);
-	assert_int_equal(funct_copy_update_symbol((funct_symbol_t *)0xDDDD, NULL), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_copy_update_symbol(NULL, (funct_symbol_t *)0xDDDD, false), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_copy_update_symbol((funct_symbol_t *)0xDDDD, NULL, false), SYMTSTAT_BAD_ARG);
 }
 
 static void funct_copy_update_symbol_field_sequence(void **state) {
 	(void)state;
-	
-    	funct_symbol_t sym1 = {
-	    .call_param_type_array = (int8_t *)0xDEADBEEF,
-	    .def_param_type_array = (int8_t *)0xDEADCEEF,
+
+	funct_symbol_t sym1 = {
+	    .call_array_offset = -1,
+	    .def_array_offset = -2,
 	    .param_count = 1,
 	    .ret_type = SYMT_TYPE_UNDEFINED,
 	};
 	funct_symbol_t sym2 = {
-	    .call_param_type_array = (int8_t *)0x0BEDBEEF,
-	    .def_param_type_array = (int8_t *)0x0BEDCEEF,
+	    .call_array_offset = -3,
+	    .def_array_offset = -4,
 	    .param_count = 2,
 	    .ret_type = SYMT_TYPE_BOOLEAN,
 	};
 
-	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2), SYMTSTAT_OK);
+	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2, false), SYMTSTAT_OK);
 	assert_int_equal(sym1.ret_type, sym2.ret_type);
 	assert_int_equal(sym1.param_count, 1);
 
-	sym1.call_param_type_array = NULL;
-	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2), SYMTSTAT_OK);
-	assert_ptr_equal(sym1.call_param_type_array, sym2.call_param_type_array);
+	sym1.call_array_offset = -1;
+	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2, false), SYMTSTAT_OK);
+	assert_int_equal(sym1.call_array_offset, sym2.call_array_offset);
 	assert_int_equal(sym1.param_count, 1);
 
-	sym1.def_param_type_array = NULL;
-	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2), SYMTSTAT_OK);
-	assert_ptr_equal(sym1.def_param_type_array, sym2.def_param_type_array);
+	sym1.def_array_offset = -1;
+	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2, false), SYMTSTAT_OK);
+	assert_int_equal(sym1.def_array_offset, sym2.def_array_offset);
 	assert_int_equal(sym1.param_count, 1);
+}
+
+static void funct_copy_update_symbol_definition(void **state) {
+	(void)state;
+
+	funct_symbol_t sym1 = {
+	    .call_array_offset = -1,
+	    .def_array_offset = -2,
+	    .param_count = 1,
+	    .ret_type = SYMT_TYPE_STRING,
+	};
+	funct_symbol_t sym2 = {
+	    .call_array_offset = -3,
+	    .def_array_offset = -4,
+	    .param_count = 2,
+	    .ret_type = SYMT_TYPE_BOOLEAN,
+	};
+
+	assert_int_equal(funct_copy_update_symbol(&sym1, &sym2, true), SYMTSTAT_OK);
+	assert_int_equal(sym1.ret_type, sym2.ret_type);
 }
 
 /*==========================
@@ -834,15 +928,15 @@ static void funct_insert_calls_unique(void **state) {
 	assert_uint_equal(table->call_arr_im_count, 3);
 	assert_false(table->state_insert);
 
-	assert_int_equal(sym_func1.call_param_type_array[0], SYMT_TYPE_INTEGER);
+	assert_int_equal(FUNCT_CALL_TYPE_OFFSET(table, sym_func1, 0), SYMT_TYPE_INTEGER);
 	assert_int_equal(sym_func1.param_count, 1);
 	assert_int_equal(sym_func1.ret_type, SYMT_TYPE_DOUBLE);
 
-	assert_int_equal(sym_func2.call_param_type_array[0], SYMT_TYPE_STRING);
+	assert_int_equal(FUNCT_CALL_TYPE_OFFSET(table, sym_func2, 0), SYMT_TYPE_STRING);
 	assert_int_equal(sym_func2.param_count, 1);
 	assert_int_equal(sym_func2.ret_type, SYMT_TYPE_UNIT);
 
-	assert_int_equal(sym_func3.call_param_type_array[0], SYMT_TYPE_UNIT);
+	assert_int_equal(FUNCT_CALL_TYPE_OFFSET(table, sym_func3, 0), SYMT_TYPE_UNIT);
 	assert_int_equal(sym_func3.param_count, 1);
 	assert_int_equal(sym_func3.ret_type, SYMT_TYPE_UNDEFINED);
 
@@ -881,7 +975,7 @@ static void funct_insert_calls_signature_conflict(void **state) {
 	assert_int_equal(funct_insert_end(table, "func1", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 	funct_symbol_t sym_func1;
 	funct_find_symbol(table, "func1", &sym_func1);
-	const symt_data_type_t prev_param_type = sym_func1.call_param_type_array[0];
+	const symt_data_type_t prev_param_type = FUNCT_CALL_TYPE_OFFSET(table, sym_func1, 0);
 
 	funct_insert_begin(table, IS_FUNC_CALL);
 	funct_insert_add_param(table, SYMT_TYPE_STRING); /* 1:STRING */
@@ -889,7 +983,7 @@ static void funct_insert_calls_signature_conflict(void **state) {
 
 	assert_false(table->state_insert);
 	funct_find_symbol(table, "func1", &sym_func1);
-	assert_int_equal(prev_param_type, sym_func1.call_param_type_array[0]);
+	assert_int_equal(prev_param_type, FUNCT_CALL_TYPE_OFFSET(table, sym_func1, 0));
 
 	funct_free(table);
 }
@@ -931,8 +1025,8 @@ static void funct_insert_calls_update_existing(void **state) {
 
 	funct_symbol_t sym_func1;
 	funct_find_symbol(table, "func1", &sym_func1);
-	const int8_t *prev_call_adr = sym_func1.call_param_type_array;
-	const int8_t *prev_def_adr = sym_func1.def_param_type_array;
+	const int prev_call_ofst = sym_func1.call_array_offset;
+	const int prev_def_ofst = sym_func1.def_array_offset;
 	const int prev_param_count = sym_func1.param_count;
 
 	funct_insert_begin(table, IS_FUNC_CALL);
@@ -942,8 +1036,8 @@ static void funct_insert_calls_update_existing(void **state) {
 	assert_false(table->state_insert);
 	funct_find_symbol(table, "func1", &sym_func1);
 	assert_int_equal(sym_func1.ret_type, SYMT_TYPE_STRING);
-	assert_ptr_equal(sym_func1.call_param_type_array, prev_call_adr);
-	assert_ptr_equal(sym_func1.def_param_type_array, prev_def_adr);
+	assert_int_equal(sym_func1.call_array_offset, prev_call_ofst);
+	assert_int_equal(sym_func1.def_array_offset, prev_def_ofst);
 	assert_int_equal(sym_func1.param_count, prev_param_count);
 
 	funct_free(table);
@@ -979,15 +1073,15 @@ static void funct_insert_defs_unique(void **state) {
 	assert_uint_equal(table->def_arr_im_count, 3);
 	assert_false(table->state_insert);
 
-	assert_int_equal(sym_func1.def_param_type_array[0], SYMT_TYPE_STRING);
+	assert_int_equal(FUNCT_DEF_TYPE_OFFSET(table, sym_func1, 0), SYMT_TYPE_STRING);
 	assert_int_equal(sym_func1.param_count, 1);
 	assert_int_equal(sym_func1.ret_type, SYMT_TYPE_DOUBLE);
 
-	assert_int_equal(sym_func2.def_param_type_array[0], SYMT_TYPE_DOUBLE);
+	assert_int_equal(FUNCT_DEF_TYPE_OFFSET(table, sym_func2, 0), SYMT_TYPE_DOUBLE);
 	assert_int_equal(sym_func2.param_count, 1);
 	assert_int_equal(sym_func2.ret_type, SYMT_TYPE_UNIT);
 
-	assert_int_equal(sym_func3.def_param_type_array[0], SYMT_TYPE_INTEGER);
+	assert_int_equal(FUNCT_DEF_TYPE_OFFSET(table, sym_func3, 0), SYMT_TYPE_INTEGER);
 	assert_int_equal(sym_func3.param_count, 1);
 	assert_int_equal(sym_func3.ret_type, SYMT_TYPE_BOOLEAN);
 
@@ -997,23 +1091,24 @@ static void funct_insert_defs_unique(void **state) {
 static void funct_insert_defs_param_count_conflict(void **state) {
 	(void)state;
 	funct_t *table;
-	funct_init(&table);
+	assert_int_equal(funct_init(&table), SYMTSTAT_OK);
 
-	funct_insert_begin(table, IS_FUNC_DEF);
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_DEF), SYMTSTAT_OK);
 	assert_int_equal(funct_insert_end(table, "func1", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK); /* param_count = 0 */
 	funct_symbol_t sym_func1;
-	funct_find_symbol(table, "func1", &sym_func1);
+	assert_int_equal(funct_find_symbol(table, "func1", &sym_func1), SYMTSTAT_OK);
 	const int prev_param_count = sym_func1.param_count;
 
-	funct_insert_begin(table, IS_FUNC_DEF);
-	funct_insert_add_param(table, SYMT_TYPE_STRING); /* param_count = 1 */
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_DEF), SYMTSTAT_OK);
+	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_STRING), SYMTSTAT_OK); /* param_count = 1 */
 	assert_int_equal(funct_insert_end(table, "func1", SYMT_TYPE_BOOLEAN), SYMTSTAT_FUNC_BAD_PARAM_CNT);
 
 	assert_false(table->state_insert);
-	funct_find_symbol(table, "func1", &sym_func1);
-	assert_int_equal(prev_param_count, sym_func1.param_count);
+	assert_int_equal(funct_find_symbol(table, "func1", &sym_func1), SYMTSTAT_OK);
+	assert_int_not_equal(prev_param_count, sym_func1.param_count);
+	assert_int_equal(sym_func1.param_count, 1); /* latest insert operation takes precedence */
 
-	funct_free(table);
+	assert_int_equal(funct_free(table), SYMTSTAT_OK);
 }
 
 static void funct_insert_defs_signature_conflict(void **state) {
@@ -1026,7 +1121,7 @@ static void funct_insert_defs_signature_conflict(void **state) {
 	assert_int_equal(funct_insert_end(table, "func1", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 	funct_symbol_t sym_func1;
 	funct_find_symbol(table, "func1", &sym_func1);
-	const symt_data_type_t prev_param_type = sym_func1.def_param_type_array[0];
+	const symt_data_type_t prev_param_type = FUNCT_DEF_TYPE_OFFSET(table, sym_func1, 0);
 
 	funct_insert_begin(table, IS_FUNC_DEF);
 	funct_insert_add_param(table, SYMT_TYPE_STRING); /* 1:STRING */
@@ -1034,7 +1129,7 @@ static void funct_insert_defs_signature_conflict(void **state) {
 
 	assert_false(table->state_insert);
 	funct_find_symbol(table, "func1", &sym_func1);
-	assert_int_equal(prev_param_type, sym_func1.def_param_type_array[0]);
+	assert_int_equal(prev_param_type, FUNCT_DEF_TYPE_OFFSET(table, sym_func1, 0));
 
 	funct_free(table);
 }
@@ -1062,7 +1157,7 @@ static void funct_insert_defs_redefinition(void **state) {
 	assert_int_equal(funct_insert_end(table, "func", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 
 	funct_insert_begin(table, IS_FUNC_DEF);
-	assert_int_equal(funct_insert_end(table, "func", SYMT_TYPE_BOOLEAN), SYMTSTAT_BAD_ARG);
+	assert_int_equal(funct_insert_end(table, "func", SYMT_TYPE_BOOLEAN), SYMTSTAT_FUNC_REDEFINITION);
 
 	funct_free(table);
 }
@@ -1075,11 +1170,11 @@ static void funct_insert_combined_unique(void **state) {
 	funct_t *table;
 	funct_init(&table);
 
-	funct_insert_begin(table, IS_FUNC_CALL);
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_CALL), SYMTSTAT_OK);
 	assert_int_equal(funct_insert_end(table, "func_call", SYMT_TYPE_UNDEFINED), SYMTSTAT_OK);
 
-	funct_insert_begin(table, IS_FUNC_DEF);
-	funct_insert_add_param(table, SYMT_TYPE_STRING);
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_DEF), SYMTSTAT_OK);
+	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_STRING), SYMTSTAT_OK);
 	assert_int_equal(funct_insert_end(table, "func_def", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 
 	funct_symbol_t sym_call;
@@ -1087,9 +1182,12 @@ static void funct_insert_combined_unique(void **state) {
 	assert_int_equal(funct_find_symbol(table, "func_call", &sym_call), SYMTSTAT_OK);
 	assert_int_equal(funct_find_symbol(table, "func_def", &sym_def), SYMTSTAT_OK);
 
-	assert_null(sym_call.def_param_type_array);
+	assert_false(funct_sym_has_def_sign(&sym_call));
+	assert_true(funct_sym_has_call_sign(&sym_call));
 	assert_int_equal(sym_call.param_count, 0);
-	assert_null(sym_def.call_param_type_array);
+
+	assert_true(funct_sym_has_def_sign(&sym_def));
+	assert_false(funct_sym_has_call_sign(&sym_def));
 	assert_int_equal(sym_def.param_count, 1);
 
 	funct_free(table);
@@ -1101,19 +1199,20 @@ static void funct_insert_combined_update_call(void **state) {
 	funct_init(&table);
 
 	/* Add a function call symbol (definition array not defined) */
-	funct_insert_begin(table, IS_FUNC_CALL);
-	funct_insert_add_param(table, SYMT_TYPE_DOUBLE);
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_CALL), SYMTSTAT_OK);
+	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_DOUBLE), SYMTSTAT_OK);
 	assert_int_equal(funct_insert_end(table, "func", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 
 	/* Update the existing symbol with a definition (this must match the call signature, otherwise SHTF) */
-	funct_insert_begin(table, IS_FUNC_DEF);
-	funct_insert_add_param(table, SYMT_TYPE_DOUBLE);
+	assert_int_equal(funct_insert_begin(table, IS_FUNC_DEF), SYMTSTAT_OK);
+	assert_int_equal(funct_insert_add_param(table, SYMT_TYPE_DOUBLE), SYMTSTAT_OK);
 	assert_int_equal(funct_insert_end(table, "func", SYMT_TYPE_BOOLEAN), SYMTSTAT_OK);
 
 	funct_symbol_t sym_func;
 	assert_int_equal(funct_find_symbol(table, "func", &sym_func), SYMTSTAT_OK);
-	assert_non_null(sym_func.def_param_type_array);
-	assert_memory_equal(sym_func.def_param_type_array, sym_func.call_param_type_array, 1);
+	ASSERT_TYPE_OFFSET_VALID(sym_func.def_array_offset);
+	assert_memory_equal(table->def_type_array + sym_func.def_array_offset,
+	                    table->call_type_array + sym_func.call_array_offset, 1);
 
 	funct_free(table);
 }
@@ -1137,15 +1236,16 @@ static void funct_insert_combined_update_def(void **state) {
 
 	funct_symbol_t sym_func;
 	assert_int_equal(funct_find_symbol(table, "func", &sym_func), SYMTSTAT_OK);
-	assert_non_null(sym_func.call_param_type_array);
+	ASSERT_TYPE_OFFSET_VALID(sym_func.call_array_offset);
+	assert_memory_equal(table->def_type_array + sym_func.def_array_offset,
+	                    table->call_type_array + sym_func.call_array_offset, 2);
 
-	assert_memory_equal(sym_func.def_param_type_array, sym_func.call_param_type_array, 2);
-	
 	funct_free(table);
 }
 
 // TODO: I should add stress tests but I'm currently in a state which could only be described as "mental
 // anguish", we'll just pray that these are enough for now.
+// Update from 2026-11-07: So they weren't enough.
 
 /* The funny */
 int main(void) {
@@ -1178,6 +1278,7 @@ int main(void) {
 	    cmocka_unit_test(funct_compare_sym_signatures_by_def_sign),
 	    cmocka_unit_test(funct_copy_update_symbol_returns),
 	    cmocka_unit_test(funct_copy_update_symbol_field_sequence),
+	    cmocka_unit_test(funct_copy_update_symbol_definition),
 	};
 	EXEC_TEST_CATEGORY("Functable symbol helpers", tests_funct_symbol_helper_functions);
 
@@ -1241,6 +1342,6 @@ int main(void) {
 	};
 	EXEC_TEST_CATEGORY("Advanced insertion w/ combined symbols (def & call)",
 	                   tests_adv_funct_insert_combined);
-	
+
 	return test_results;
 }

@@ -15,20 +15,22 @@
 #include <stdint.h>
 
 /*======================
-  DATA TYPES & CONSTANTS
+  Data types & constants
   ======================*/
 
 /**
    A symbol from the function table.
 
-   Slightly more involved, but do not be afraid, the code doesn't bite... not physically anyway.
+   Ah think ah could've made this a tad bit smaller, but I dinnae ken how to.
 */
 typedef struct FunctableSymbol {
 	symt_data_type_t ret_type;
-	int param_count; //!< If <0, undefined, otherwise specifies the number of function parameters.
-	int8_t *def_param_type_array;
-	int8_t *call_param_type_array;
-} funct_symbol_t; // sizeof(funct_symbol_t) = 24
+	int param_count;       //!< If <0, undefined, otherwise specifies the number of function parameters.
+	int def_array_offset;  //!< An index at which the first definition parameter appears. Invalid if <0.
+	bool has_def_sign;     //!< If true, the symbol has a defined definition signature.
+	int call_array_offset; //!< An index at which the first call parameter appears. Invalid if <0.
+	bool has_call_sign;    //!< If true, the symbol has a defined call signature.
+} funct_symbol_t;          // sizeof(funct_symbol_t) = 24
 
 /**
    The function table type. Analogous to the symt_t type, but actually simpler :-).
@@ -37,12 +39,12 @@ typedef struct FunctableSymbol {
 */
 typedef struct Functable funct_t;
 
-/* Maybe remove these? I don't know right now */
+/* Don't remove these, I know now */
 static constexpr bool IS_FUNC_CALL = false;
 static constexpr bool IS_FUNC_DEF = true;
 
 /*====================
-  DATA TYPE OPERATIONS
+  Data type operations
   ====================*/
 
 /**
@@ -51,7 +53,8 @@ static constexpr bool IS_FUNC_DEF = true;
    @note On allocation failure, func_table is left unchanged.
 
    @param[out] func_table A pointer to the variable that'll store the table's address.
-   @returns SYMTSTAT_OK on success, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_ARG if the arguments make no sense or SYMTSTAT_BAD_ALLOC on
+   allocation failure.
 */
 symt_stat_t funct_init(funct_t **const func_table);
 
@@ -60,7 +63,7 @@ symt_stat_t funct_init(funct_t **const func_table);
    @ref funct_pending_insert is true.
 
    @param func_table The function table to free from memory.
-   @returns SYMTSTAT_OK on success, or an error.
+   @returns SYMTSTAT_OK on success or SYMTSTAT_BAD_ARG if the arguments make no sense.
 */
 symt_stat_t funct_free(funct_t *func_table);
 
@@ -69,7 +72,8 @@ symt_stat_t funct_free(funct_t *func_table);
 
    @param table The table into which to insert.
    @param is_def Specifies if the inserted symbol will be a function call or a function definition.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if an insertion is already pending, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if an insertion is already pending or SYMTSTAT_BAD_ARG
+   if the arguments make no sense.
 */
 symt_stat_t funct_insert_begin(funct_t *table, const bool is_def);
 
@@ -79,7 +83,8 @@ symt_stat_t funct_insert_begin(funct_t *table, const bool is_def);
    @param table The table in which to work.
    @param param_type The type of the inserted function's parameter.
    @returns SYMTSTAT_OK on success, SYMTSTAT_BAD_STATE if no insertion is pending, SYMTSTAT_BAD_ARG if
-   param_type is SYMT_TYPE_UNDEFINED, or an error.
+   param_type is SYMT_TYPE_UNDEFINED or if the arguments don't make sense, or SYMTSTAT_BAD_ALLOC if allocation
+   fails.
 */
 symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_type);
 
@@ -97,15 +102,16 @@ symt_stat_t funct_insert_add_param(funct_t *table, const symt_data_type_t param_
        + SYMTSTAT_FUNC_DIFF_DEF_SIGN if the existing symbol's definition signature differs;
        .
    otherwise if this is a function call symbol (See @ref funct_insert_begin):
-       + SYMTSTAT_FUNC_BAD_RETURN if the existing symbol's return type differs and isn't SYMT_TYPE_UNDEFINED;
+       + SYMTSTAT_FUNC_BAD_RETURN if the existing and pending symbol signatures differ and are both defined;
        .
    otherwise if this is a function definition symbol:
-       + SYMTSTAT_BAD_ARG if a definition already exists (redefinition),
-       + SYMTSTAT_FUNC_BAD_RETURN if the existing symbol's return type differs or if the inserted type is
-       SYMT_TYPE_UNDEFINED;
+       + SYMTSTAT_FUNC_REDEFINITION if a definition already exists,
+       + SYMTSTAT_FUNC_BAD_RETURN if pending symbol's return is SYMT_TYPE_UNDEFINED, or if both symbols have
+       defined return types that do not match;
        .
-    otherwise SYMTSTAT_OK. Unless this function ends with any other unmentioned error (such as *_BAD_ARG),
-    it attempts to update an existing symbol as much as possible (without overwriting existing data).
+   otherwise SYMTSTAT_OK. Unless this function ends with any other unmentioned error (which may be *_BAD_ARG
+   or *_BAD_ALLOC), it updates the existing symbol. If the pending symbol was a definition, its data takes
+   precedence.
 */
 symt_stat_t funct_insert_end(funct_t *table, const char *ident, const symt_data_type_t ret);
 
@@ -133,19 +139,22 @@ bool funct_exists(const funct_t *table, const char *ident);
    @param ident The identifier of the sought-after symbol (the name of the function which you so adamantly
    crave).
    @param out_symbol The address of the variable into which the found symbol shall be copied.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_NO_SYMBOL if the identifier doesn't exist, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_NO_SYMBOL if the identifier doesn't exist or SYMTSTAT_BAD_ARG if
+   the arguments don't make sense.
 */
 symt_stat_t funct_find_symbol(const funct_t *table, const char *ident, funct_symbol_t *out_symbol);
 
 /**
-   Return the type data type of the nth parameter of a given function symbol.
+   Return the data type of the nth parameter of a given function symbol.
 
+   @param table The table containing the symbol that you will be working with.
    @param func_symbol A specific function symbol, as returned by one of the find functions.
    @param param_number The index of the function's parameter, from left to right, beginning at 0.
    @param[out] out_type The variable into which to store the parameter type.
-   @returns SYMTSTAT_OK on success, SYMTSTAT_FUNC_NO_PARAMS if the symbol has no parameters, or an error.
+   @returns SYMTSTAT_OK on success, SYMTSTAT_FUNC_NO_PARAMS if the symbol has no parameters or
+   SYMTSTAT_BAD_ARG if the arguments make no sense.
 */
-symt_stat_t funct_nth_param_type(const funct_symbol_t *func_symbol, const int param_number,
-                                 symt_data_type_t *out_type);
+symt_stat_t funct_nth_param_type(const funct_t *table, const funct_symbol_t *func_symbol,
+                                 const int param_number, symt_data_type_t *out_type);
 
 #endif
