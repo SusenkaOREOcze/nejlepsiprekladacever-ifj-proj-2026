@@ -33,8 +33,8 @@
 /** @brief Operands are taken as internal (i.e. defined by the codegen, not by the irgen). */
 #define CDG_PFLAG_INTERNAL_NAMESPACE (0x8)
 
-/** @brief (LABEL only) Prints a new, unique label (increments the internal label ID accumulator). */
-#define CDG_PFLAG_NEW_LABEL (0x10 | CDG_PFLAG_INTERNAL_NAMESPACE)
+/** @brief (LABEL only) Increments the internal label ID accumulator. */
+#define CDG_PFLAG_NEW_LABEL (0x10)
 
 #define CDG_LABEL_FUNC (true)
 #define CDG_LABEL_GENERIC (false)
@@ -75,6 +75,8 @@ struct Codegen {
 	tac_operand_t *param_stack; //!< Parameter stack for proper PUSH/POP order determination.
 	size_t pstack_size;
 	size_t pstack_count;
+	bool promote_arg;
+	symt_data_type_t current_return_type;
 };
 
 /**
@@ -209,15 +211,6 @@ inline void cdg_print_instr_direct(const codegen_t *gen, const char *instr, int 
 	if (flags & CDG_PFLAG_APPEND_LINE_FEED)
 		fputc('\n', gen->stream);
 }
-
-/**
-   @brief Instruct the codegen to create a look-up table of base blocks.
-
-   @param gen The code generator to instruct.
-   @param code The code list to analyze.
-   @returns CDG_OK on success with a populated look-up table in 'gen'.
-*/
-cdg_result_t codegen_generate_blocks(codegen_t *gen, const tac_t *code);
 
 /**
    @brief Perform code generation from a code list.

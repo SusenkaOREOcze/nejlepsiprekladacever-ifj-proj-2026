@@ -76,7 +76,7 @@ inline bool make_operand_ident(char *dst, const size_t maxlen, const tac_operand
 	char *fmt = (internal ? "%ci%lu" : "%c%lu");
 	int written_chars =
 	    snprintf(dst, maxlen, fmt, (operand->kind == TAC_OPERAND_SYMBOL) ? 's' : 't', operand->value.id);
-	return (written_chars < 0 || written_chars > (int)maxlen ? false : true);
+	return written_chars >= 0 && (size_t)written_chars < maxlen;
 }
 
 /* Extern definitions for the module that calls for it (see codegen.c) */

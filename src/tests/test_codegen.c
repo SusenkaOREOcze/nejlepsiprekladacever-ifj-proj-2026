@@ -13,6 +13,7 @@
 #include "cmocka/cmocka.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
 
@@ -969,6 +970,284 @@ static void test_cdg_generate_complex_branched(void **state) {
 /*
   The machine
 */
+/**
+ * @brief Generates NOT and inequality instructions.
+ */
+static void test_not_and_not_equal(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+	tac_instruction_t instruction = {
+	    .opcode = TAC_NOT,
+	    .dst = {.kind = TAC_OPERAND_TEMP, .type = SYMT_TYPE_BOOLEAN, .value.id = 1},
+	    .src1 = {.kind = TAC_OPERAND_BOOLEAN, .type = SYMT_TYPE_BOOLEAN, .value.boolean = true}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction.opcode = TAC_NOT_EQUAL;
+	instruction.dst.value.id = 2;
+	instruction.src2 = instruction.src1;
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[8192];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "NOT "));
+	assert_non_null(strstr(text, "EQ "));
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Calls the custom-named entry function and emits built-ins.
+ */
+static void test_entrypoint_and_builtins(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN,
+	                                  .name = "factorialExample",
+	                                  .is_entrypoint = true};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_RETURN,
+	                                  .src1 = {.kind = TAC_OPERAND_UNIT, .type = SYMT_TYPE_UNIT}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[8192];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "CALL _factorialExample\nEXIT int@0\n"));
+	assert_non_null(strstr(text, "LABEL _print\n"));
+	assert_non_null(strstr(text, "LABEL _subStr\n"));
+	assert_non_null(strstr(text, "GT LF@bad LF@return int@2147483647\n"));
+	assert_non_null(strstr(text, "LT LF@bad LF@return int@-2147483648\n"));
+	assert_non_null(strstr(text, "GT LF@greater LF@value float@0x1p+52\n"));
+	assert_non_null(strstr(text, "LABEL $floor_end\n"));
+	assert_non_null(strstr(text, "MOVE LF@return nil@nil\nPOPFRAME\nRETURN\n"));
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Declares the loop variable before its label.
+ */
+static void test_loop_variable_before_label(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_LABEL, .label = 8};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_MOVE,
+	                                  .dst = {.kind = TAC_OPERAND_TEMP, .type = SYMT_TYPE_INTEGER, .value.id = 4},
+	                                  .src1 = {.kind = TAC_OPERAND_INTEGER, .type = SYMT_TYPE_INTEGER, .value.integer = 1}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_JUMP, .label = 8};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_FUNCTION_END, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[8192];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	const char *declaration = strstr(text, "DEFVAR LF@t0\n");
+	const char *loop = strstr(text, "LABEL &8\n");
+	assert_non_null(declaration);
+	assert_non_null(loop);
+	assert_true(declaration < loop);
+	assert_null(strstr(loop, "DEFVAR LF@t0\n"));
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Wraps integer addition to the signed 32-bit range.
+ */
+static void test_int32_overflow(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_ADD,
+	                                  .dst = {.kind = TAC_OPERAND_TEMP, .type = SYMT_TYPE_INTEGER, .value.id = 1},
+	                                  .src1 = {.kind = TAC_OPERAND_INTEGER, .type = SYMT_TYPE_INTEGER, .value.integer = INT32_MAX},
+	                                  .src2 = {.kind = TAC_OPERAND_INTEGER, .type = SYMT_TYPE_INTEGER, .value.integer = 1}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_RETURN,
+	                                  .src1 = {.kind = TAC_OPERAND_UNIT, .type = SYMT_TYPE_UNIT}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_FUNCTION_END, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[10000];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "ADD LF@t0 int@2147483647 int@1\n"));
+	assert_non_null(strstr(text, "IDIV LF@wrapq LF@t0 int@4294967296\n"));
+	assert_non_null(strstr(text, "SUB LF@t0 LF@t0 int@4294967296\n"));
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Converts the Int operand before mixed numeric addition.
+ */
+static void test_mixed_numeric_add(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_ADD,
+	                                  .dst = {.kind = TAC_OPERAND_TEMP, .type = SYMT_TYPE_DOUBLE, .value.id = 1},
+	                                  .src1 = {.kind = TAC_OPERAND_INTEGER, .type = SYMT_TYPE_INTEGER, .value.integer = 1},
+	                                  .src2 = {.kind = TAC_OPERAND_DOUBLE, .type = SYMT_TYPE_DOUBLE, .value.decimal = 0.5}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_FUNCTION_END, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[10000];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "INT2FLOAT LF@cast1 int@1\n"));
+	assert_non_null(strstr(text, "ADD LF@t0 LF@cast1 float@0x1p-1\n"));
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Generates CONCAT when adding two strings.
+ */
+static void test_string_add(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_ADD,
+	                                  .dst = {.kind = TAC_OPERAND_TEMP,
+	                                          .type = SYMT_TYPE_STRING,
+	                                          .value.id = 1},
+	                                  .src1 = {.kind = TAC_OPERAND_STRING,
+	                                           .type = SYMT_TYPE_STRING,
+	                                           .value.string = "left"},
+	                                  .src2 = {.kind = TAC_OPERAND_STRING,
+	                                           .type = SYMT_TYPE_STRING,
+	                                           .value.string = "right"}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_FUNCTION_END, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[8192];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "CONCAT LF@t0 string@left string@right\n"));
+	assert_null(strstr(text, "ADD LF@t0 string@left string@right\n"));
+
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
+/**
+ * @brief Uses the same label for the nonzero check and its target.
+ */
+static void test_nonzero_check_label(void **state) {
+	(void)state;
+	funct_t *functions = NULL;
+	codegen_t *gen = NULL;
+	tac_t *code = NULL;
+	FILE *output = tmpfile();
+	assert_non_null(output);
+	assert_int_equal(funct_init(&functions), SYMTSTAT_OK);
+	assert_int_equal(codegen_init(&gen, functions), CDG_OK);
+	assert_int_equal(tac_create(&code), TAC_OK);
+
+	tac_instruction_t instruction = {.opcode = TAC_FUNCTION_BEGIN, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_CHECK_NONZERO,
+	                                  .src1 = {.kind = TAC_OPERAND_INTEGER,
+	                                           .type = SYMT_TYPE_INTEGER,
+	                                           .value.integer = 1}};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+	instruction = (tac_instruction_t){.opcode = TAC_FUNCTION_END, .name = "main"};
+	assert_int_equal(tac_append(code, &instruction), TAC_OK);
+
+	assert_int_equal(codegen_run(output, gen, code), CDG_OK);
+	assert_int_equal(fflush(output), 0);
+	assert_int_equal(fseek(output, 0, SEEK_SET), 0);
+	char text[8192];
+	size_t length = fread(text, 1, sizeof(text) - 1, output);
+	text[length] = '\0';
+	assert_non_null(strstr(text, "JUMPIFNEQ &i1 int@1 int@0\nEXIT int@40\nLABEL &i1\n"));
+
+	tac_destroy(&code);
+	assert_int_equal(codegen_free(&gen), CDG_OK);
+	assert_int_equal(funct_free(functions), SYMTSTAT_OK);
+	assert_int_equal(fclose(output), 0);
+}
+
 int main(void) {
 	int test_results = 0;
 	const char filename[] = "test_codegen.out";
@@ -1029,6 +1308,13 @@ int main(void) {
 
 	struct CMUnitTest test_codegen_complex[] = {
 	    cmocka_unit_test(test_cdg_generate_complex_branched),
+	    cmocka_unit_test(test_not_and_not_equal),
+	    cmocka_unit_test(test_entrypoint_and_builtins),
+	    cmocka_unit_test(test_loop_variable_before_label),
+	    cmocka_unit_test(test_int32_overflow),
+	    cmocka_unit_test(test_mixed_numeric_add),
+	    cmocka_unit_test(test_string_add),
+	    cmocka_unit_test(test_nonzero_check_label),
 	};
 	EXEC_TEST_CATEGORY("Codegen complex code generation tests", test_codegen_complex);
 
