@@ -47,7 +47,7 @@ TEST_RUNS := $(addprefix run-,$(TEST_NAMES))
 # Submission archive. Sources are flattened.
 SUBMISSION_SOURCES := $(sort $(wildcard src/*.c src/include/*.h))
 SUBMISSION_STAGE := build/submission-package
-SUBMISSION_ZIP := build/IFJ26_submission.zip
+SUBMISSION_ZIP := build/xkralil00.zip
 SUBMISSION_ZIP_ABS := $(abspath $(SUBMISSION_ZIP))
 SUBMISSION_DOC := $(wildcard docs/dokumentace.pdf)
 SUBMISSION_EXTENSIONS ?= BOOLTHEN CONTROL FUNEXP VALMEM

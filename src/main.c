@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @author xkralil00 (SusenkaOREOcze)
+ * @date 2026-11-27
+ * @brief main
+ */
+
 #include "include/main.h"
 
 #include <stdio.h>
@@ -7,6 +14,7 @@
 #include "include/lexer.h"
 #include "include/semantic_anal.h"
 #include "include/syntax_anal.h"
+#include "include/main.h"
 
 /**
  * @brief Maps lexer failures to compiler exit codes.
