@@ -99,7 +99,7 @@ Tým pracoval na vlastních větvích projektu. Všechny PR do main větve musel
 \section{Architektura překladače}
 %======================================================================
 
-Lexikální analyzátor čte zdrojový program ze standardního vstupu a na požádání parseru vrací tokeny (struktura \texttt{token\_t}). Parser provádí pouze syntaktickou analýzu a hlásí události AST builderu, který poté staví AST zdola nahoru. Sémantická analýza poté prochází AST a zapisuje typy a \verb|symbol_id|, při tom využívá tabulku symbolů a funkcí. Obě tabulky stojí nad TRP. Z doplněného AST vytvoří generátor mezikódu tříadresný kód TAC a převeden na IFJcode26 a je to výstup na stdout. Každá fáze končí při první chybě. Překladač neobsahuje optimalizátor kódu.
+Lexikální analyzátor čte zdrojový program ze standardního vstupu a na požádání parseru vrací tokeny (struktura \texttt{token\_t}). Parser provádí pouze syntaktickou analýzu a hlásí události AST builderu, který poté staví AST zdola nahoru. Sémantická analýza poté prochází AST a zapisuje typy a \verb|symbol_id|, při tom využívá tabulku symbolů a funkcí. Obě tabulky stojí nad TRP. Z doplněného AST vytvoří generátor mezikódu tříadresný kód TAC a převede se na IFJcode26 a je to výstup na stdout. Každá fáze končí při první chybě. Překladač neobsahuje optimalizátor kódu.
  
 \begin{figure}[H]
   \centering
@@ -149,7 +149,7 @@ Lexer je implementován jako rozšířený deterministický konečný automat (o
     \item identifikátory a čísla jsou na hranách zapsány regulárním výrazem, který zastupuje posloupnost stavů a přechodů,
     \item \textsc{token} a \textsc{error} jsou koncové stavy jednoho volání. Další volání začíná opět ve stavu \textsc{scan} a čítače si ponechává,
 \end{itemize}
-Pro zjednodušení DKA byla navržena zjednodušená verze pokrývající všechny stavy a přechody. Ovšem pro čitelnost byly všechny přechody očíslovány. Korespondující názvy jsou poté obsaženy v \textbf{~Tabulce~1:~Přechody~konečného~automatu~lexikálního~analyzátoru.}
+Pro zjednodušení DKA byla navržena verze pokrývající všechny stavy a přechody. Ovšem pro čitelnost byly všechny přechody očíslovány. Korespondující názvy jsou poté obsaženy v \textbf{~Tabulce~1:~Přechody~konečného~automatu~lexikálního~analyzátoru.}
 \newpage
 \begin{landscape}
 \begin{figure}[h]
@@ -409,7 +409,7 @@ Pro zkrácení zápisu v~tabulkách jsou použity tyto skupiny tokenů:
     \item \grp{OPERATOR} = \tk{MULTIPLY}, \tk{DIVIDE}, \tk{LESS}, \tk{LESS\_EQUAL}, \tk{GREATER}, \tk{GREATER\_EQUAL}\tk{EQUAL}, \tk{NOT\_EQUAL}, \tk{AND}, \tk{OR}, \tk{DOT},
     \item \grp{EXPR} = \tk{ID}, \grp{LITERAL}, \tk{LPAREN}, \tk{PLUS}, \tk{MINUS}, \tk{IF} -- tokeny, kterými může začínat výraz.
 \end{itemize}
-Tokeny \tk{PLUS}, \tk{MINUS} a \tk{LPAREN} nejsou součástí skupin \grp{LITERAL} a \grp{OPERATOR}, protože mohou výraz začínat (\texttt{+x}, \texttt{-x}, \texttt{(a+b)}) i pokračovat (\texttt{a + b}, \texttt{a - b}, \texttt{f(x)}).
+Tokeny \tk{PLUS}, \tk{MINUS} a \tk{LPAREN} nejsou součástí skupin \grp{LITERAL} a \grp{OPERATOR}, protože mohou výraz uvozovat (\texttt{+x}, \texttt{-x}, \texttt{(a+b)}) i pokračovat (\texttt{a + b}, \texttt{a - b}, \texttt{f(x)}).
 
 \begin{landscape}
 \begin{table}[p]
@@ -536,7 +536,7 @@ Každá prázdná buňka reprezentuje chybu.
     \item[\texttt{lexer\_fsm.c}] Konečný automat lexikálního analyzátoru, který kromě tokenů ze zdrojového textu generuje podle zásobníku šířek odsazení tokeny \texttt{INDENT} a \texttt{DEDENT}.
     \item[\texttt{lexer\_keywords.c}] Rozpoznání klíčových slov až mezi celými přečtenými identifikátory, takže automat nepotřebuje zvláštní stavy pro každé klíčové slovo.
     \item[\texttt{hashtable.c/h}] Obecná tabulka s~rozptýlenými položkami s~implicitním zřetězením (lineární průzkum, rozptylovací funkce DJB2~\cite{djb2}, zdvojnásobení při faktoru naplnění 0,64), jejíž typ dat kontroluje překladač díky unii s~pomocným ukazatelem~\cite{hooper}.
-    \item[\texttt{symtable.c/h}] Tabulka proměnných jako zásobník rozsahů platnosti (hashovacích tabulek), které se kvůli rychlosti nealokují pro každý blok znovu, ale berou se z~předalokovaného záložního zásobníku. Každá proměnná dostane jedinečné \texttt{uid}, aby šlo při generování kódu odlišit zastíněné proměnné.
+    \item[\texttt{symtable.c/h}] Tabulka proměnných jako zásobník rozsahů platnosti (hashovacích tabulek), které se kvůli rychlosti nealokují pro každý blok znovu, ale berou se z~předalokovaného záložního zásobníku. Každá proměnná dostane jedinečné \texttt{uid}, aby šlo při generování kódu odlišit zastíněné proměnné.o
     \item[\texttt{functable.c/h}] Tabulka funkcí, do které sémantická analýza uloží definice všech funkcí s~konečnými návratovými typy. Tabulka umí uchovat i~signaturu z~prvního volání a porovnat ji s~definicí, tuto schopnost ale překladač nevyužívá.
     \item[\texttt{symtable\_shared.h}] Stavové kódy a datové typy symbolů společné pro tabulku proměnných i~funkcí.
     \item[\texttt{syntax\_anal.c/h}] Syntaktický analyzátor, který příkazy zpracovává rekurzivním
@@ -549,7 +549,7 @@ Každá prázdná buňka reprezentuje chybu.
     \item[\texttt{tac.c/h}] Mezikód jako obousměrně vázaný seznam tříadresných instrukcí, jejichž operandy (proměnná, dočasná hodnota nebo literál) nesou datový typ, aby generátor nemusel typy znovu odvozovat.
     \item[\texttt{irgen.c/h}] Převod AST na tříadresný kód, který řídicí struktury i~zkrácené vyhodnocení \texttt{\&\&} a \texttt{||} rozkládá na skoky a návěští a proměnné rozlišuje podle \texttt{symbol\_id} ze sémantické analýzy.
     \item[\texttt{codegen.c/h}] Překlad mezikódu do IFJcode26, kde každou operaci generuje vlastní funkce z~tabulky indexované kódem operace a argumenty funkcí se předávají přes datový zásobník.
-    \item[\texttt{main.c}] ...
+    \item[\texttt{main.c}] Main přkladače
 
 \end{description}
 
