@@ -11,14 +11,19 @@
 #include "include/codegen_impl.h"
 #include "include/codegen_shared.h"
 
-#include <stdlib.h>
-#include <string.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <stdlib.h>
+#include <string.h>
 
-/* Built-ins use the same stack argument order and LF@return convention as user functions. */
+/**
+   @brief Write IFJcode26 built-in functions to the output stream.
+
+   Built-ins use the same stack argument order and LF\\@return convention as user functions.
+   @param out The output stream to write to.
+*/
 static void cdg_emit_builtins(FILE *out) {
-	static const char builtins[] =
+	static const char BUILTINS[] =
 	    "LABEL _print\nDEFVAR LF@return\nDEFVAR LF@value\nDEFVAR LF@type\n"
 	    "POPS LF@value\nTYPE LF@type LF@value\n"
 	    "JUMPIFNEQ $print_value LF@type string@nil\nWRITE string@()\nJUMP $print_end\n"
@@ -106,7 +111,7 @@ static void cdg_emit_builtins(FILE *out) {
 	    "JUMPIFEQ $floor_done LF@greater bool@false\n"
 	    "SUB LF@whole LF@whole int@1\nLABEL $floor_done\n"
 	    "INT2FLOAT LF@return LF@whole\nLABEL $floor_end\nPOPFRAME\nRETURN\n";
-	fputs(builtins, out);
+	fputs(BUILTINS, out);
 }
 
 /* IFJ26 Int wraps at 32 bits; IFJcode26 int arithmetic uses 64 bits. */
@@ -125,18 +130,20 @@ static cdg_result_t cdg_wrap_integer(codegen_t *gen, const tac_operand_t *dst) {
 	fputs("LF@wrapq\nGT LF@wrapcmp ", out);
 	if (cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK)
 		return CDG_INVALID_OPERAND;
-	fprintf(out, "int@2147483647\nJUMPIFEQ $wrap_high%" PRIu32 " LF@wrapcmp bool@true\n"
-	             "LT LF@wrapcmp ", label);
+	fprintf(out,
+	        "int@2147483647\nJUMPIFEQ $wrap_high%" PRIu32 " LF@wrapcmp bool@true\n"
+	        "LT LF@wrapcmp ",
+	        label);
 	if (cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK)
 		return CDG_INVALID_OPERAND;
-	fprintf(out, "int@-2147483648\nJUMPIFEQ $wrap_low%" PRIu32 " LF@wrapcmp bool@true\n"
-	             "JUMP $wrap_end%" PRIu32 "\nLABEL $wrap_high%" PRIu32 "\nSUB ", label, label,
-	        label);
+	fprintf(out,
+	        "int@-2147483648\nJUMPIFEQ $wrap_low%" PRIu32 " LF@wrapcmp bool@true\n"
+	        "JUMP $wrap_end%" PRIu32 "\nLABEL $wrap_high%" PRIu32 "\nSUB ",
+	        label, label, label);
 	if (cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK ||
 	    cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK)
 		return CDG_INVALID_OPERAND;
-	fprintf(out, "int@4294967296\nJUMP $wrap_end%" PRIu32 "\nLABEL $wrap_low%" PRIu32 "\nADD ",
-	        label, label);
+	fprintf(out, "int@4294967296\nJUMP $wrap_end%" PRIu32 "\nLABEL $wrap_low%" PRIu32 "\nADD ", label, label);
 	if (cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK ||
 	    cdg_print_operand(gen, dst, CDG_PFLAG_APPEND_SPACE) != CDG_OK)
 		return CDG_INVALID_OPERAND;
@@ -144,7 +151,16 @@ static cdg_result_t cdg_wrap_integer(codegen_t *gen, const tac_operand_t *dst) {
 	return ferror(out) ? CDG_INTERNAL_FAILURE : CDG_OK;
 }
 
-static cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t *tac) {
+/**
+   @brief Generate type conversion (promotion) code for binary instructions with source operands of type
+   INT-DOUBLE/DOUBLE-IN.
+
+   DOUBLE always has priority over INTEGER: the instruction `ADD GF\\@$0 int\\@4 float\\@0x1p0` will have the
+   first source operand converted to a float equivalent `float\\@0x1p+2`.
+   @param gen The code generator to print with.
+   @param tac A binary instruction whose operands to promote.
+*/
+cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t *tac) {
 	if (tac->src1.type == tac->src2.type)
 		return CDG_OK;
 	if (tac->src1.type == SYMT_TYPE_INTEGER && tac->src2.type == SYMT_TYPE_DOUBLE) {
@@ -158,7 +174,15 @@ static cdg_result_t cdg_prepare_numeric(codegen_t *gen, const tac_instruction_t 
 	return CDG_OK;
 }
 
-static cdg_result_t cdg_print_numeric(codegen_t *gen, const tac_instruction_t *tac, bool second) {
+/**
+   @brief Print a numeric operand's equivalent cast variable.
+
+   @param gen The code generator.
+   @param tac The instruction whose source operand cast variable to print.
+   @param second Specifies which source operand to cast. If true, use src2, else use src1.
+   @returns CDG_OK on success, or the return code of @ref cdg_print_operand.
+*/
+cdg_result_t cdg_print_numeric(codegen_t *gen, const tac_instruction_t *tac, bool second) {
 	const tac_operand_t *operand = second ? &tac->src2 : &tac->src1;
 	if (operand->type == SYMT_TYPE_INTEGER &&
 	    (second ? tac->src1.type : tac->src2.type) == SYMT_TYPE_DOUBLE) {
@@ -210,6 +234,9 @@ cdg_result_t codegen_free(codegen_t **gen) {
 cdg_result_t codegen_run(FILE *stream, codegen_t *gen, const tac_t *code) {
 	if (code == NULL || gen == NULL)
 		return CDG_BAD_ARG;
+	cdg_result_t result = CDG_OK;
+
+	/* Find a custom entrypoint (@main-annotated function that's not called "main") */
 	const tac_instruction_t *entrypoint = NULL;
 	for (const tac_instruction_t *instruction = tac_first(code); instruction != NULL;
 	     instruction = instruction->next) {
@@ -229,9 +256,10 @@ cdg_result_t codegen_run(FILE *stream, codegen_t *gen, const tac_t *code) {
 	cdg_print_instr_direct(gen, "CREATEFRAME", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_print_instr_direct(gen, "PUSHFRAME", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_print_instr_direct(gen, "CALL", CDG_PFLAG_APPEND_SPACE);
-	if (entrypoint != NULL)
-		cdg_print_label(gen, entrypoint, CDG_LABEL_FUNC, CDG_PFLAG_APPEND_LINE_FEED);
-	else
+	if (entrypoint != NULL) {
+		if ((result = cdg_print_label(gen, entrypoint, CDG_LABEL_FUNC, CDG_PFLAG_APPEND_LINE_FEED)) != CDG_OK)
+			return result;
+	} else
 		cdg_print_instr_direct(gen, "_main", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_print_instr_direct(gen, "EXIT int@0", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_emit_builtins(gen->stream);
@@ -564,8 +592,8 @@ cdg_result_t cdg_gen_function_begin(codegen_t *gen, const tac_instruction_t *tac
 	if ((result = cdg_print_label(gen, tac, CDG_LABEL_FUNC, CDG_PFLAG_APPEND_LINE_FEED)) != CDG_OK)
 		return result;
 
-	/* Define (declare is a more correct term here) the return value at the beginning of the function.
-	   This is used by RETURN later. */
+	/* Define (declare is a more correct term here) special function-scope variables.
+	   These are used by type conversion, integer wrapping functions and by RETURN. */
 	cdg_print_instr_direct(gen, "DEFVAR LF@return", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_print_instr_direct(gen, "DEFVAR LF@wrapq", CDG_PFLAG_APPEND_LINE_FEED);
 	cdg_print_instr_direct(gen, "DEFVAR LF@wrapcmp", CDG_PFLAG_APPEND_LINE_FEED);
@@ -661,6 +689,8 @@ cdg_result_t cdg_gen_move(codegen_t *gen, const tac_instruction_t *tac) {
 	if ((result = cdg_print_operand(gen, &tac->dst, CDG_PFLAG_APPEND_SPACE)) != CDG_OK) /* dst */
 		return result;
 	result = cdg_print_operand(gen, &tac->src1, CDG_PFLAG_APPEND_LINE_FEED);
+
+	/* Wrap result to 32bit integer range */
 	if (result == CDG_OK && gen->in_local_scope && tac->dst.type == SYMT_TYPE_INTEGER &&
 	    tac->src1.kind == TAC_OPERAND_INTEGER &&
 	    (tac->src1.value.integer < INT32_MIN || tac->src1.value.integer > INT32_MAX))
@@ -678,18 +708,17 @@ cdg_result_t cdg_gen_positive(codegen_t *gen, const tac_instruction_t *tac) {
 
 	/* Unary plus keeps the numeric value, whether it is a literal or a variable. */
 	if ((tac->src1.type != SYMT_TYPE_INTEGER && tac->src1.type != SYMT_TYPE_DOUBLE) ||
-	    (!tac_is_numeric_literal_operand(tac->src1.kind) &&
-	     !tac_is_symbol_operand(tac->src1.kind)))
+	    (!tac_is_numeric_literal_operand(tac->src1.kind) && !tac_is_symbol_operand(tac->src1.kind)))
 		return CDG_INVALID_OPERAND;
 	if ((result = cdg_print_defvar(gen, &tac->dst, false)) != CDG_OK)
 		return result;
 	cdg_print_instr_direct(gen, "MOVE", CDG_PFLAG_APPEND_SPACE);
 	if ((result = cdg_print_operand(gen, &tac->dst, CDG_PFLAG_APPEND_SPACE)) != CDG_OK) /* dst */
 		return result;
-
-	if ((result = cdg_print_operand(gen, &tac->src1, CDG_PFLAG_APPEND_LINE_FEED)) != CDG_OK)
+	if ((result = cdg_print_operand(gen, &tac->src1, CDG_PFLAG_APPEND_LINE_FEED)) != CDG_OK) /* src */
 		return result;
 
+	/* Wrap result to 32bit integer range */
 	if (result == CDG_OK && gen->in_local_scope && tac->dst.type == SYMT_TYPE_INTEGER &&
 	    tac->src1.kind == TAC_OPERAND_INTEGER &&
 	    (tac->src1.value.integer < INT32_MIN || tac->src1.value.integer > INT32_MAX))
@@ -743,6 +772,7 @@ cdg_result_t cdg_gen_negative(codegen_t *gen, const tac_instruction_t *tac) {
 		result = cdg_print_operand(gen, &multiplier, CDG_PFLAG_APPEND_LINE_FEED); /* mult */
 	}
 
+	/* Wrap result to 32bit integer range */
 	if (result == CDG_OK && gen->in_local_scope && tac->dst.type == SYMT_TYPE_INTEGER)
 		return cdg_wrap_integer(gen, &tac->dst);
 	return result;
@@ -826,6 +856,8 @@ cdg_result_t cdg_gen_simple_binary(codegen_t *gen, const tac_instruction_t *tac)
 			return result;
 		result = cdg_print_numeric(gen, tac, true);
 	}
+
+	/* Wrap result to 32bit integer range */
 	if (result == CDG_OK && gen->in_local_scope && tac->dst.type == SYMT_TYPE_INTEGER &&
 	    (tac->opcode == TAC_ADD || tac->opcode == TAC_SUBTRACT || tac->opcode == TAC_MULTIPLY))
 		return cdg_wrap_integer(gen, &tac->dst);
@@ -860,6 +892,8 @@ cdg_result_t cdg_gen_divide(codegen_t *gen, const tac_instruction_t *tac) {
 	if ((result = cdg_print_numeric(gen, tac, false)) != CDG_OK) /* left src */
 		return result;
 	result = cdg_print_numeric(gen, tac, true);
+
+	/* Wrap result to 32bit integer range */
 	if (result == CDG_OK && gen->in_local_scope && tac->dst.type == SYMT_TYPE_INTEGER)
 		return cdg_wrap_integer(gen, &tac->dst);
 	return result;
@@ -994,12 +1028,12 @@ cdg_result_t cdg_gen_func_return(codegen_t *gen, const tac_instruction_t *tac) {
 		return CDG_INVALID_INSTRUCTION;
 	cdg_result_t result = CDG_INVALID_INSTRUCTION;
 
-	/* Read local operands while LF is still active, then restore the caller frame. */
-	cdg_print_instr_direct(gen,
-	                      gen->current_return_type == SYMT_TYPE_DOUBLE && tac->src1.type == SYMT_TYPE_INTEGER
-	                          ? "INT2FLOAT LF@return"
-	                          : "MOVE LF@return",
-	                      CDG_PFLAG_APPEND_SPACE);
+	/* Read local operands while LF is still active, then restore the caller frame. Also perform type
+	   promotion from INT to DOUBLE if necessary. */
+	char *instr = gen->current_return_type == SYMT_TYPE_DOUBLE && tac->src1.type == SYMT_TYPE_INTEGER
+	                  ? "INT2FLOAT LF@return"
+	                  : "MOVE LF@return";
+	cdg_print_instr_direct(gen, instr, CDG_PFLAG_APPEND_SPACE);
 	if ((result = cdg_print_operand(gen, &tac->src1, CDG_PFLAG_APPEND_LINE_FEED)) != CDG_OK)
 		return result;
 	cdg_print_instr_direct(gen, "POPFRAME", CDG_PFLAG_APPEND_LINE_FEED);
@@ -1123,7 +1157,10 @@ static const generator_func_t CODE_GEN_MAP[] = {
     cdg_gen_jump_if_false,      // [26] TAC_JUMP_IF_FALSE
 };
 
-#ifdef UNIT_UNDER_TEST
+/**
+   @brief Maps the identifier (the name) of every code generator to its TAC instruction index.
+   This is equivalent to, yet very different from, @ref CODE_GEN_MAP.
+*/
 static const char *code_gen_names[] = {
     "cdg_gen_function_begin",
     "cdg_gen_function_end",
@@ -1155,7 +1192,6 @@ static const char *code_gen_names[] = {
     "cdg_gen_unconditional_jump",
     "cdg_gen_jump_if_false",
 };
-#endif
 
 cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 	cdg_result_t result = CDG_OK;
@@ -1163,6 +1199,7 @@ cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 
 	const tac_instruction_t *cur_instr = tac_first(code);
 	while (cur_instr != NULL) {
+		/* Compute code generator function index */
 		int code_gen_idx = (cur_instr->opcode - TAC_FUNCTION_BEGIN);
 		if (code_gen_idx < 0 || code_gen_idx >= (int)(sizeof(CODE_GEN_MAP) / sizeof(CODE_GEN_MAP[0]))) {
 			fprintf(stderr, "codegen_generate_code: code generator map index %d out of bounds [0, %lu]\n",
@@ -1170,8 +1207,7 @@ cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 			return CDG_INTERNAL_FAILURE;
 		}
 
-		/* Get the code generator for the current instruction */
-		generator_func_t cur_generator = CODE_GEN_MAP[code_gen_idx];
+		/* Conditionally promote function arguments by doing... something. Yeah idk */
 		gen->promote_arg = false;
 		if (cur_instr->opcode == TAC_ARG) {
 			const tac_instruction_t *call = cur_instr->next;
@@ -1180,9 +1216,8 @@ cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 			if (call == NULL || call->opcode != TAC_CALL || call->name == NULL)
 				return CDG_INVALID_INSTRUCTION;
 			symt_data_type_t expected = SYMT_TYPE_UNDEFINED;
-			if (arg_index == 0 &&
-			    (strcmp(call->name, "toInt") == 0 || strcmp(call->name, ".toInt") == 0 ||
-			     strcmp(call->name, ".floor") == 0))
+			if (arg_index == 0 && (strcmp(call->name, "toInt") == 0 || strcmp(call->name, ".toInt") == 0 ||
+			                       strcmp(call->name, ".floor") == 0))
 				expected = SYMT_TYPE_DOUBLE;
 			else {
 				funct_symbol_t function;
@@ -1190,23 +1225,19 @@ cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 				    arg_index <= INT_MAX)
 					(void)funct_nth_param_type(gen->func_table, &function, (int)arg_index, &expected);
 			}
-			gen->promote_arg = expected == SYMT_TYPE_DOUBLE &&
-			                   cur_instr->src1.type == SYMT_TYPE_INTEGER;
+			gen->promote_arg = expected == SYMT_TYPE_DOUBLE && cur_instr->src1.type == SYMT_TYPE_INTEGER;
 			arg_index++;
 		} else
 			arg_index = 0;
 
-		/* Call the code gen on this instruction */
+		/* Call the code generator for this instruction */
+		generator_func_t cur_generator = CODE_GEN_MAP[code_gen_idx];
 		if ((result = cur_generator(gen, cur_instr)) != CDG_OK) {
-#ifdef UNIT_UNDER_TEST
 			fprintf(stderr, "codegen_generate_code: code generator %s failed with code %d\n",
 			        code_gen_names[code_gen_idx], result);
-#else  /* UNIT_UNDER_TEST defined */
-			fprintf(stderr, "codegen_generate_code: code generator @%p failed with code %d\n",
-			        (void *)cur_generator, result);
-#endif	/* UNIT_UNDER_TEST not defined */
 			break;
 		}
+
 		/* Declare function locals before any branch can enter a loop body. */
 		if (cur_instr->opcode == TAC_FUNCTION_BEGIN) {
 			for (const tac_instruction_t *item = cur_instr->next;
@@ -1218,8 +1249,7 @@ cdg_result_t codegen_generate_code(codegen_t *gen, const tac_t *code) {
 		}
 
 		/* If current is PARAM but next is not, print pending function parameters */
-		if (cur_instr->opcode == TAC_PARAM && cur_instr->next != NULL &&
-		    cur_instr->next->opcode != TAC_PARAM)
+		if (cur_instr->opcode == TAC_PARAM && cur_instr->next != NULL && cur_instr->next->opcode != TAC_PARAM)
 			if ((result = cdg_generate_func_params(gen)) != CDG_OK)
 				break;
 
