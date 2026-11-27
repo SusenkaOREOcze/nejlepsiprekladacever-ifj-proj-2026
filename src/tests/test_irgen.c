@@ -418,6 +418,119 @@ static void test_if_expression_joins_values(void **state) {
 	ast_destroy(&tree);
 }
 
+/**
+ * @brief A returning if-expression branch exits without writing the join temporary.
+ * @param state CMocka state, unused.
+ */
+static void test_if_expression_returning_branch(void **state) {
+	(void)state;
+	ast_node_t *body;
+	ast_t *tree = program(SYMT_TYPE_INTEGER, &body);
+	ast_node_t *choice = node(AST_NODE_IF, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *condition = node(AST_NODE_BOOLEAN, SYMT_TYPE_BOOLEAN, AST_UNRESOLVED_SYMBOL, NULL);
+	condition->value.boolean = true;
+	ast_node_t *yes = node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *no = node(AST_NODE_BLOCK, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *return_node = node(AST_NODE_RETURN, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	add(return_node, integer(1));
+	add(yes, return_node);
+	add(no, integer(2));
+	add(choice, condition);
+	add(choice, yes);
+	add(choice, no);
+	add(body, choice);
+
+	tac_t *code = NULL;
+	assert_int_equal(irgen_generate(tree, &code), IRGEN_OK);
+	assert_int_equal(at(code, 1)->opcode, TAC_JUMP_IF_FALSE);
+	assert_int_equal(at(code, 2)->opcode, TAC_RETURN);
+	assert_int_equal(at(code, 2)->src1.value.integer, 1);
+	assert_int_equal(at(code, 3)->opcode, TAC_LABEL);
+	assert_int_equal(at(code, 4)->opcode, TAC_MOVE);
+	assert_int_equal(at(code, 5)->opcode, TAC_RETURN);
+	assert_int_equal(at(code, 5)->src1.value.id, at(code, 4)->dst.value.id);
+	tac_destroy(&code);
+	ast_destroy(&tree);
+}
+
+/**
+ * @brief An else branch ending in return does not fall through the join label.
+ * @param state CMocka state, unused.
+ */
+static void test_if_expression_returning_else_branch(void **state) {
+	(void)state;
+	ast_node_t *body;
+	ast_t *tree = program(SYMT_TYPE_INTEGER, &body);
+	ast_node_t *choice = node(AST_NODE_IF, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *condition = node(AST_NODE_BOOLEAN, SYMT_TYPE_BOOLEAN, AST_UNRESOLVED_SYMBOL, NULL);
+	condition->value.boolean = false;
+	ast_node_t *yes = node(AST_NODE_BLOCK, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *no = node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *return_node = node(AST_NODE_RETURN, SYMT_TYPE_INTEGER, AST_UNRESOLVED_SYMBOL, NULL);
+	add(yes, integer(2));
+	add(return_node, integer(1));
+	add(no, return_node);
+	add(choice, condition);
+	add(choice, yes);
+	add(choice, no);
+	add(body, choice);
+
+	tac_t *code = NULL;
+	assert_int_equal(irgen_generate(tree, &code), IRGEN_OK);
+	assert_int_equal(at(code, 1)->opcode, TAC_JUMP_IF_FALSE);
+	assert_int_equal(at(code, 2)->opcode, TAC_MOVE);
+	assert_int_equal(at(code, 3)->opcode, TAC_JUMP);
+	assert_int_equal(at(code, 4)->opcode, TAC_LABEL);
+	assert_int_equal(at(code, 5)->opcode, TAC_RETURN);
+	assert_int_equal(at(code, 5)->src1.value.integer, 1);
+	assert_int_equal(at(code, 6)->opcode, TAC_LABEL);
+	assert_int_equal(at(code, 7)->opcode, TAC_RETURN);
+	tac_destroy(&code);
+	ast_destroy(&tree);
+}
+
+/**
+ * @brief Unit-valued if expressions execute both branches without allocating a result temporary.
+ * @param state CMocka state, unused.
+ */
+static void test_if_expression_unit_result(void **state) {
+	(void)state;
+	ast_node_t *body;
+	ast_t *tree = program(SYMT_TYPE_UNIT, &body);
+	ast_node_t *declaration = node(AST_NODE_VAL_DECLARATION, SYMT_TYPE_UNIT, 7, "result");
+	ast_node_t *choice = node(AST_NODE_IF, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *condition = node(AST_NODE_BOOLEAN, SYMT_TYPE_BOOLEAN, AST_UNRESOLVED_SYMBOL, NULL);
+	condition->value.boolean = true;
+	ast_node_t *yes = node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *no = node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *yes_call = node(AST_NODE_CALL, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, "print");
+	ast_node_t *no_call = node(AST_NODE_CALL, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, "print");
+	add(yes_call, node(AST_NODE_STRING, SYMT_TYPE_STRING, AST_UNRESOLVED_SYMBOL, "yes"));
+	add(no_call, node(AST_NODE_STRING, SYMT_TYPE_STRING, AST_UNRESOLVED_SYMBOL, "no"));
+	add(yes, yes_call);
+	add(no, no_call);
+	add(choice, condition);
+	add(choice, yes);
+	add(choice, no);
+	add(declaration, choice);
+	add(body, declaration);
+
+	tac_t *code = NULL;
+	assert_int_equal(irgen_generate(tree, &code), IRGEN_OK);
+	size_t call_count = 0;
+	size_t temp_move_count = 0;
+	for (const tac_instruction_t *it = tac_first(code); it; it = it->next) {
+		if (it->opcode == TAC_CALL)
+			call_count++;
+		if (it->opcode == TAC_MOVE && it->dst.kind == TAC_OPERAND_TEMP)
+			temp_move_count++;
+	}
+	assert_int_equal(call_count, 2);
+	assert_int_equal(temp_move_count, 0);
+	tac_destroy(&code);
+	ast_destroy(&tree);
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_invalid_arguments),
@@ -430,6 +543,9 @@ int main(void) {
 		cmocka_unit_test(test_call_argument_order),
 	    cmocka_unit_test(test_binary_freezes_left_symbol),
 		cmocka_unit_test(test_if_expression_joins_values),
+	    cmocka_unit_test(test_if_expression_returning_branch),
+	    cmocka_unit_test(test_if_expression_returning_else_branch),
+	    cmocka_unit_test(test_if_expression_unit_result),
 	};
 	return cmocka_run_group_tests_name("IR generator", tests, NULL, NULL);
 }

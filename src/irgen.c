@@ -322,30 +322,40 @@ static irgen_result_t logical(irgen_context_t *ctx, const ast_node_t *node, tac_
 }
 
 /**
- * @brief Evaluates a block whose final child returns a value.
+ * @brief Evaluates a block whose final child returns a value or exits with return.
  * @param ctx Generation context.
  * @param node Branch body.
- * @param dst Shared result temporary for both branches.
+ * @param dst Shared result temporary, or NONE when the result is Unit.
+ * @param[out] returns True when the block ends with a return statement.
  * @return Generation status.
  */
-static irgen_result_t value_block(irgen_context_t *ctx, const ast_node_t *node, tac_operand_t dst) {
+static irgen_result_t value_block(irgen_context_t *ctx, const ast_node_t *node, tac_operand_t dst,
+								  bool *returns) {
 	if (!node || node->kind != AST_NODE_BLOCK || !node->first_child)
 		return IRGEN_INVALID_AST;
 
 	const ast_node_t *last = node->first_child;
 	while (last->next_sibling)
 		last = last->next_sibling;
-	if (!ast_node_is_expression(last) && last->kind != AST_NODE_IF)
+	if (!ast_node_is_expression(last) && last->kind != AST_NODE_IF && last->kind != AST_NODE_RETURN)
 		return IRGEN_INVALID_AST;
 	for (const ast_node_t *item = node->first_child; item != last; item = item->next_sibling) {
 		irgen_result_t r = statement(ctx, item);
 		if (r != IRGEN_OK)
 			return r;
 	}
+	if (last->kind == AST_NODE_RETURN) {
+		*returns = true;
+		return statement(ctx, last);
+	}
+
+	*returns = false;
 	tac_operand_t value;
 	irgen_result_t r = expression(ctx, last, &value);
 	if (r != IRGEN_OK)
 		return r;
+	if (dst.kind == TAC_OPERAND_NONE)
+		return value.kind == TAC_OPERAND_UNIT ? IRGEN_OK : IRGEN_INVALID_AST;
 	return emit(ctx, (tac_instruction_t){.opcode = TAC_MOVE, .dst = dst, .src1 = value});
 
 	/* example
@@ -371,31 +381,42 @@ static irgen_result_t conditional_value(irgen_context_t *ctx, const ast_node_t *
 	const ast_node_t *yes = condition ? condition->next_sibling : NULL;
 	const ast_node_t *no = yes ? yes->next_sibling : NULL;
 
-	if (!no || no->next_sibling || node->data_type == SYMT_TYPE_UNIT)
+	if (!no || no->next_sibling)
 		return IRGEN_INVALID_AST;
 
 	tac_operand_t test;
-	uint64_t alternative, end;
+	uint64_t alternative, end = 0;
 	irgen_result_t r;
 	if ((r = expression(ctx, condition, &test)) != IRGEN_OK)
 		return r;
-	if ((r = new_temp(ctx, node->data_type, out)) != IRGEN_OK)
+	const bool unit_result = node->data_type == SYMT_TYPE_UNIT;
+	if (unit_result)
+		*out = (tac_operand_t){.kind = TAC_OPERAND_UNIT, .type = SYMT_TYPE_UNIT};
+	else if ((r = new_temp(ctx, node->data_type, out)) != IRGEN_OK)
 		return r;
 	if ((r = new_label(ctx, &alternative)) != IRGEN_OK)
 		return r;
-	if ((r = new_label(ctx, &end)) != IRGEN_OK)
-		return r;
 	if ((r = jump(ctx, TAC_JUMP_IF_FALSE, alternative, test)) != IRGEN_OK)
 		return r;
-	if ((r = value_block(ctx, yes, *out)) != IRGEN_OK)
+	bool yes_returns;
+	if ((r = value_block(ctx, yes, unit_result ? (tac_operand_t){0} : *out, &yes_returns)) != IRGEN_OK)
 		return r;
-	if ((r = jump(ctx, TAC_JUMP, end, (tac_operand_t){0})) != IRGEN_OK)
+	if (yes_returns) {
+		if ((r = jump(ctx, TAC_LABEL, alternative, (tac_operand_t){0})) != IRGEN_OK)
+			return r;
+	} else {
+		if ((r = new_label(ctx, &end)) != IRGEN_OK)
+			return r;
+		if ((r = jump(ctx, TAC_JUMP, end, (tac_operand_t){0})) != IRGEN_OK)
+			return r;
+		if ((r = jump(ctx, TAC_LABEL, alternative, (tac_operand_t){0})) != IRGEN_OK)
+			return r;
+	}
+	bool no_returns;
+	if ((r = value_block(ctx, no, unit_result ? (tac_operand_t){0} : *out, &no_returns)) != IRGEN_OK)
 		return r;
-	if ((r = jump(ctx, TAC_LABEL, alternative, (tac_operand_t){0})) != IRGEN_OK)
-		return r;
-	if ((r = value_block(ctx, no, *out)) != IRGEN_OK)
-		return r;
-	return jump(ctx, TAC_LABEL, end, (tac_operand_t){0});
+	(void)no_returns;
+	return yes_returns ? IRGEN_OK : jump(ctx, TAC_LABEL, end, (tac_operand_t){0});
 
 	/* example
 	    Source: if condition then { 10 } else { 20 }
