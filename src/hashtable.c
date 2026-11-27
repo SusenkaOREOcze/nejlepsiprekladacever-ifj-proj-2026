@@ -235,7 +235,7 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 			free(new_entry);
 			return HTBLSTAT_BAD_ALLOC;
 		}
-		strncpy((char *)new_key, key, key_length);
+		memcpy((char *)new_key, key, key_length);
 
 		new_entry->key = new_key;
 		(*table)->array[entry_index] = new_entry;
@@ -250,7 +250,7 @@ htbl_stat_t hashtable_insert(htbl_t **table, htbl_key_t key, void *data, const s
 			htbl_key_t new_key = calloc(key_length + 1, sizeof(char));
 			if (new_key == NULL)
 				return HTBLSTAT_BAD_ALLOC;
-			strncpy((char *)new_key, key, key_length);
+			memcpy((char *)new_key, key, key_length);
 
 			entry->key = new_key; /* Note: entry->key is freed by hashtable_delete() */
 			entry->hash = key_hash;
