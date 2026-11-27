@@ -318,11 +318,12 @@ static void test_range_guard_labels(void **state) {
 	ast_node_t *fn = make_node(AST_NODE_FUNCTION, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, "iterate");
 	ast_node_t *body = make_node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
 	ast_node_t *loop = make_node(AST_NODE_FOR, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
-	child(loop, make_node(AST_NODE_FOR_BINDING, SYMT_TYPE_INTEGER, 17, "i"));
+	ast_node_t *binding = make_node(AST_NODE_FOR_BINDING, SYMT_TYPE_INTEGER, 17, "i");
 	ast_node_t *range = make_node(AST_NODE_RANGE_UNTIL, SYMT_TYPE_UNDEFINED, AST_UNRESOLVED_SYMBOL, NULL);
 	child(range, number(0));
 	child(range, number(3));
-	child(loop, range);
+	child(binding, range);
+	child(loop, binding);
 	ast_node_t *guard = make_node(AST_NODE_LESS, SYMT_TYPE_BOOLEAN, AST_UNRESOLVED_SYMBOL, NULL);
 	child(guard, make_node(AST_NODE_IDENTIFIER, SYMT_TYPE_INTEGER, 17, "i"));
 	child(guard, number(2));

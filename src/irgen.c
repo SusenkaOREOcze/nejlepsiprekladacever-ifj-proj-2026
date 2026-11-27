@@ -651,15 +651,16 @@ static irgen_result_t loop(irgen_context_t *ctx, const ast_node_t *node) {
 /**
  * @brief Emits an integer range for loop with optional guards.
  * @param ctx Generation context.
- * @param node FOR node ordered as binding, range, guards, body.
+ * @param node FOR node ordered as binding with its range child, guards, body.
  * @return Generation status.
  */
 static irgen_result_t range_loop(irgen_context_t *ctx, const ast_node_t *node) {
 	const ast_node_t *binding = node->first_child;
-	const ast_node_t *range = binding ? binding->next_sibling : NULL;
+	const ast_node_t *range = binding ? binding->first_child : NULL;
 
 	if (!binding || binding->kind != AST_NODE_FOR_BINDING || !range ||
-	    (range->kind != AST_NODE_RANGE_TO && range->kind != AST_NODE_RANGE_UNTIL))
+	    (range->kind != AST_NODE_RANGE_TO && range->kind != AST_NODE_RANGE_UNTIL) ||
+	    range->next_sibling)
 		return IRGEN_INVALID_AST;
 
 	const ast_node_t *from = range->first_child;
@@ -669,7 +670,7 @@ static irgen_result_t range_loop(irgen_context_t *ctx, const ast_node_t *node) {
 	if (!to || (by && (range->kind != AST_NODE_RANGE_TO || by->next_sibling)))
 		return IRGEN_INVALID_AST;
 
-	const ast_node_t *body = range->next_sibling;
+	const ast_node_t *body = binding->next_sibling;
 	if (!body)
 		return IRGEN_INVALID_AST;
 
@@ -775,7 +776,7 @@ static irgen_result_t range_loop(irgen_context_t *ctx, const ast_node_t *node) {
 	if ((r = jump(ctx, TAC_JUMP_IF_FALSE, end, test)) != IRGEN_OK)
 		return r;
 	// A failed guard skips the body but still advances the loop variable.
-	for (const ast_node_t *guard = range->next_sibling; guard != body; guard = guard->next_sibling) {
+	for (const ast_node_t *guard = binding->next_sibling; guard != body; guard = guard->next_sibling) {
 		if ((r = expression(ctx, guard, &test)) != IRGEN_OK)
 			return r;
 		if ((r = jump(ctx, TAC_JUMP_IF_FALSE, advance, test)) != IRGEN_OK)
@@ -899,7 +900,9 @@ static irgen_result_t function(irgen_context_t *ctx, const ast_node_t *node) {
 	if (!node->text)
 		return IRGEN_INVALID_AST;
 
-	irgen_result_t r = emit(ctx, (tac_instruction_t){.opcode = TAC_FUNCTION_BEGIN, .name = node->text});
+	irgen_result_t r = emit(ctx, (tac_instruction_t){.opcode = TAC_FUNCTION_BEGIN,
+	                                                .name = node->text,
+	                                                .is_entrypoint = node->kind == AST_NODE_MAIN_FUNCTION});
 	if (r != IRGEN_OK)
 		return r;
 
