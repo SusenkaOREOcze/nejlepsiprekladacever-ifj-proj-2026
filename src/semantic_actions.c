@@ -248,6 +248,30 @@ static sem_result_t sem_reduce(ast_node_kind_t kind, const char *text, const tok
 	return sem_push(node);
 }
 
+/**
+ * @brief Wraps an inline body in a block before attaching it to its parent.
+ * @param depth Position of the body below the top of the builder stack.
+ * @return SEM_OK, or an internal error if the body cannot be wrapped.
+ */
+static sem_result_t sem_wrap_body(size_t depth) {
+	if (depth >= builder.count)
+		return sem_builder_fail("body is missing");
+
+	const size_t index = builder.count - depth - 1;
+	ast_node_t *body = builder.nodes[index];
+	if (body->kind == AST_NODE_BLOCK)
+		return SEM_OK;
+
+	ast_node_t *block = NULL;
+	SEM_TRY(sem_new_node(AST_NODE_BLOCK, NULL, body->location, &block));
+	if (ast_node_add_child(block, body) != AST_RESULT_OK) {
+		ast_node_destroy(&block);
+		return sem_builder_fail("cannot wrap an inline body");
+	}
+	builder.nodes[index] = block;
+	return SEM_OK;
+}
+
 // literals: the lexer gives the exact source spelling, here it is turned into the value
 
 /**
@@ -576,16 +600,7 @@ static sem_result_t sem_action_assignment(void) {
 	ast_node_t *target = sem_top(1);
 	if (target == NULL || target->kind != AST_NODE_IDENTIFIER)
 		return sem_builder_fail("assignment without a target");
-
-	ast_node_t *assignment = NULL;
-	SEM_TRY(sem_new_node(AST_NODE_ASSIGNMENT, target->text, target->location, &assignment));
-	const sem_result_t result = sem_adopt(assignment, 1);
-	if (result != SEM_OK) {
-		ast_node_destroy(&assignment);
-		return result;
-	}
-	sem_drop_top(); // the target, its name is in the assignment now
-	return sem_push(assignment);
+	return sem_reduce(AST_NODE_ASSIGNMENT, NULL, NULL, 2);
 }
 
 /**
@@ -696,6 +711,8 @@ static sem_result_t sem_dispatch(syntax_semantic_action_t action, const token_t 
 	case SEMANTIC_ACTION_IF:
 		if (item_count != 2 && item_count != 3)
 			return sem_builder_fail("if with a wrong number of parts");
+		for (size_t depth = 0; depth < item_count - 1; depth++)
+			SEM_TRY(sem_wrap_body(depth));
 		return sem_reduce(AST_NODE_IF, NULL, NULL, item_count);
 
 	// functions
@@ -719,6 +736,7 @@ static sem_result_t sem_dispatch(syntax_semantic_action_t action, const token_t 
 		// the body is on top and the function with its parameters right below it
 		if (!sem_is_function(sem_top(1)))
 			return sem_builder_fail("function body without a function");
+		SEM_TRY(sem_wrap_body(0));
 		return sem_adopt(sem_top(1), 1);
 
 	// statements
@@ -753,6 +771,7 @@ static sem_result_t sem_dispatch(syntax_semantic_action_t action, const token_t 
 			return sem_builder_fail("return with more than one value");
 		return sem_reduce(AST_NODE_RETURN, NULL, NULL, item_count);
 	case SEMANTIC_ACTION_WHILE:
+		SEM_TRY(sem_wrap_body(0));
 		return sem_reduce(AST_NODE_WHILE, NULL, NULL, 2);
 	case SEMANTIC_ACTION_FOR_VARIABLE: {
 		if (token == NULL)
@@ -769,6 +788,7 @@ static sem_result_t sem_dispatch(syntax_semantic_action_t action, const token_t 
 		return sem_action_range(item_count);
 	case SEMANTIC_ACTION_FOR:
 		// generator, guards and body
+		SEM_TRY(sem_wrap_body(0));
 		return sem_reduce(AST_NODE_FOR, NULL, NULL, item_count + 2);
 
 	// blocks

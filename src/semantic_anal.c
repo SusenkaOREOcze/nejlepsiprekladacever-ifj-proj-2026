@@ -549,9 +549,14 @@ static sem_result_t sem_analyze_declaration(sem_context_t *ctx, ast_node_t *node
 }
 
 static sem_result_t sem_analyze_assignment(sem_context_t *ctx, ast_node_t *node) {
-	const char *name = sem_node_name(node);
-	ast_node_t *value = sem_last_child(node);
-	if (name == NULL || value == NULL)
+	ast_node_t *target = ast_node_child_at(node, 0);
+	ast_node_t *value = ast_node_child_at(node, 1);
+	if (target == NULL || target->kind != AST_NODE_IDENTIFIER || value == NULL ||
+	    value->next_sibling != NULL)
+		return sem_fail_malformed(node, "assignment without a target or a value");
+
+	const char *name = sem_node_name(target);
+	if (name == NULL)
 		return sem_fail_malformed(node, "assignment without a name or a value");
 
 	symt_symbol_t symbol;
@@ -574,6 +579,8 @@ static sem_result_t sem_analyze_assignment(sem_context_t *ctx, ast_node_t *node)
 
 	node->data_type = symbol.data_type;
 	node->symbol_id = symbol.uid;
+	target->data_type = symbol.data_type;
+	target->symbol_id = symbol.uid;
 	return SEM_OK;
 }
 
@@ -1003,3 +1010,4 @@ sem_result_t sem_analyze(ast_t *ast, funct_t *functions) {
 	sem_context_free(&ctx);
 	return result;
 }
+// What is this... no new line at the end of file?? How outrageous!!

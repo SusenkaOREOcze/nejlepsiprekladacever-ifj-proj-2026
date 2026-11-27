@@ -340,9 +340,11 @@ static void expressions_keep_operator_order(void **state) {
 
 	ast_node_t *assignment = ast_node_child_at(root_main->first_child, 1);
 	assert_int_equal(assignment->kind, AST_NODE_ASSIGNMENT);
-	assert_string_equal(assignment->text, "x");
+	ast_node_t *target = ast_node_child_at(assignment, 0);
+	assert_int_equal(target->kind, AST_NODE_IDENTIFIER);
+	assert_string_equal(target->text, "x");
 
-	ast_node_t *minus = assignment->first_child;
+	ast_node_t *minus = ast_node_child_at(assignment, 1);
 	assert_int_equal(minus->kind, AST_NODE_SUBTRACT);
 	assert_int_equal(minus->first_child->kind, AST_NODE_INTEGER);
 	ast_node_t *times = ast_node_child_at(minus, 1);
@@ -366,7 +368,9 @@ static void if_and_for_have_all_parts(void **state) {
 	ast_node_t *outer_if = main_statement(root, 1);
 	assert_int_equal(outer_if->kind, AST_NODE_IF);
 	assert_int_equal(ast_node_child_count(outer_if), 3);
-	ast_node_t *inner_if = ast_node_child_at(outer_if, 2);
+	ast_node_t *else_body = ast_node_child_at(outer_if, 2);
+	assert_int_equal(else_body->kind, AST_NODE_BLOCK);
+	ast_node_t *inner_if = else_body->first_child;
 	assert_int_equal(inner_if->kind, AST_NODE_IF);
 	assert_int_equal(ast_node_child_count(inner_if), 2);
 

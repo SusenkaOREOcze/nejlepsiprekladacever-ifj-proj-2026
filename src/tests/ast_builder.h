@@ -120,7 +120,7 @@ static inline ast_node_t *ast_build_boolean(bool value) {
 #define VAR_T(name, type, init) NODE(AST_NODE_VAR_DECLARATION, (name), (type), (init))
 
 /* name = value */
-#define ASSIGN(name, value) NODE(AST_NODE_ASSIGNMENT, (name), T_NONE, (value))
+#define ASSIGN(name, value) NODE(AST_NODE_ASSIGNMENT, NULL, T_NONE, ID(name), (value))
 
 /* Indented block of statements */
 #define BLOCK(...) NODE(AST_NODE_BLOCK, NULL, T_NONE __VA_OPT__(, ) __VA_ARGS__)
