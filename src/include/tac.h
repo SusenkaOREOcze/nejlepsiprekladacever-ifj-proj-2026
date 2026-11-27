@@ -85,6 +85,7 @@ typedef enum TacOpcode {
  * Callers must not modify an instruction returned by tac_first() or tac_last().
  * CALL uses name, dst, and src1 for the argument count.
  * PARAM uses dst; ARG, RETURN, and CHECK_NONZERO use src1. Jumps use label.
+ * is_entrypoint is set on the FUNCTION_BEGIN instruction for the @main function.
  */
 typedef struct TacInstruction {
 	struct TacInstruction *prev;
@@ -95,6 +96,7 @@ typedef struct TacInstruction {
 	tac_operand_t src2;
 	uint64_t label;
 	const char *name;
+	bool is_entrypoint;
 } tac_instruction_t;
 
 /**

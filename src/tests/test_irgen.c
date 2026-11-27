@@ -121,9 +121,46 @@ static void test_empty_unit_function(void **state) {
 	assert_int_equal(irgen_generate(tree, &code), IRGEN_OK);
 	assert_int_equal(tac_count(code), 3);
 	assert_int_equal(at(code, 0)->opcode, TAC_FUNCTION_BEGIN);
+	assert_false(at(code, 0)->is_entrypoint);
 	assert_int_equal(at(code, 1)->opcode, TAC_RETURN);
 	assert_int_equal(at(code, 1)->src1.kind, TAC_OPERAND_UNIT);
 	assert_int_equal(at(code, 2)->opcode, TAC_FUNCTION_END);
+	tac_destroy(&code);
+	ast_destroy(&tree);
+}
+
+/**
+ * @brief Marks a custom-named @main function as the TAC entry point.
+ *
+ * @par Source
+ * @code
+ * @main def startProgram(): Unit = {}
+ * @endcode
+ * @par Expected TAC
+ * @code
+ * FUNCTION_BEGIN startProgram [entry point]
+ * RETURN Unit
+ * FUNCTION_END startProgram
+ * @endcode
+ */
+static void test_main_function_marks_entrypoint(void **state) {
+	(void)state;
+	ast_node_t *root = node(AST_NODE_PROGRAM, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	ast_node_t *main_function = node(AST_NODE_MAIN_FUNCTION, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL,
+	                                "startProgram");
+	ast_node_t *body = node(AST_NODE_BLOCK, SYMT_TYPE_UNIT, AST_UNRESOLVED_SYMBOL, NULL);
+	add(main_function, body);
+	add(root, main_function);
+	ast_t *tree = NULL;
+	assert_int_equal(ast_create(&tree), AST_RESULT_OK);
+	assert_int_equal(ast_set_root(tree, root), AST_RESULT_OK);
+
+	tac_t *code = NULL;
+	assert_int_equal(irgen_generate(tree, &code), IRGEN_OK);
+	assert_int_equal(at(code, 0)->opcode, TAC_FUNCTION_BEGIN);
+	assert_string_equal(at(code, 0)->name, "startProgram");
+	assert_true(at(code, 0)->is_entrypoint);
+
 	tac_destroy(&code);
 	ast_destroy(&tree);
 }
@@ -535,6 +572,7 @@ int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_invalid_arguments),
 		cmocka_unit_test(test_empty_unit_function),
+		cmocka_unit_test(test_main_function_marks_entrypoint),
 	    cmocka_unit_test(test_implicit_expression_return),
 		cmocka_unit_test(test_declaration_uses_symbol_id),
 	    cmocka_unit_test(test_reject_unresolved_symbol),

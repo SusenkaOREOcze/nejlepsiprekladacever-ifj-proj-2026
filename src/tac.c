@@ -98,6 +98,7 @@ static tac_result_t make_instruction(const tac_instruction_t *source, tac_instru
 
 	copy->opcode = source->opcode;
 	copy->label = source->label;
+	copy->is_entrypoint = source->is_entrypoint;
 
 	if (source->name != NULL) {
 		copy->name = copy_string(source->name);
